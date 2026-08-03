@@ -1,0 +1,2 @@
+Copyright (c) 2025 Christoph H. Egerland
+SPDX-License-Identifier: MIT

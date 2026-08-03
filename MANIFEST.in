@@ -1,0 +1,23 @@
+# Include all C++ source and header files
+recursive-include src/_libskit *.cpp *.h *.hpp *.cc
+
+# Include CMake files
+include CMakeLists.txt
+recursive-include src CMakeLists.txt
+
+# Include documentation
+include README.md
+include LICENSE
+
+# Include requirements
+include requirements.txt
+include pyproject.toml
+
+# Exclude build artifacts
+global-exclude __pycache__
+global-exclude *.py[cod]
+global-exclude *.so
+global-exclude *.dylib
+global-exclude .git*
+prune build
+prune .cache
