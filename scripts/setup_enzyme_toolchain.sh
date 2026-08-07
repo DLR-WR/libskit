@@ -112,7 +112,12 @@ LLVM_MAJOR="$($LLVM_CONFIG --version | cut -d. -f1)"
 # Derive Clang cmake dir from LLVM cmake dir (sibling 'clang' directory)
 CLANG_CMAKE_DIR="${LLVM_CMAKE_DIR%/llvm}/clang"
 PLUGIN_DIR="$ENZYME_PREFIX/build/Enzyme"
-PLUGIN_REAL="$PLUGIN_DIR/ClangEnzyme-${LLVM_MAJOR}.so"
+# macOS emits .dylib, Linux emits .so; the symlink used by callers is always .so.
+case "$(uname -s)" in
+    Darwin) PLUGIN_EXT="dylib" ;;
+    *)      PLUGIN_EXT="so" ;;
+esac
+PLUGIN_REAL="$PLUGIN_DIR/ClangEnzyme-${LLVM_MAJOR}.${PLUGIN_EXT}"
 PLUGIN_LINK="$ENZYME_PREFIX/ClangEnzyme.so"
 
 mkdir -p "$ENZYME_PREFIX"
@@ -137,7 +142,7 @@ fi
 
 if [[ ! -f "$PLUGIN_REAL" ]]; then
     shopt -s nullglob
-    plugin_candidates=("$PLUGIN_DIR"/ClangEnzyme-*.so)
+    plugin_candidates=("$PLUGIN_DIR"/ClangEnzyme-*.so "$PLUGIN_DIR"/ClangEnzyme-*.dylib)
     shopt -u nullglob
     if [[ ${#plugin_candidates[@]} -eq 0 ]]; then
         echo "Enzyme build completed, but no ClangEnzyme plugin was produced in $PLUGIN_DIR" >&2
