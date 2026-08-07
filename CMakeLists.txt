@@ -159,7 +159,12 @@ install(TARGETS _libskit DESTINATION libskit)
 #                                         that appear in auto-generated docstrings
 #   --print-invalid-expressions-as-is  : Renders valid Python exprs that happen to look
 #                                         like invalid ones instead of replacing with ...
-#   --exit-code                        : Return non-zero on stubgen warnings/errors
+# NOTE: --exit-code is intentionally omitted. Inside cibuildwheel's isolated
+# build env, pybind11-stubgen can fail to resolve `numpy.typing.NDArray`
+# annotations even though numpy is installed; with --exit-code that turns
+# stubgen warnings into wheel-build failures. Without it, the .pyi still
+# generates (with `...` fallbacks for unresolved annotations) and the wheel
+# builds successfully.
 add_custom_command(
     OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/_libskit.pyi"
     COMMAND
@@ -172,7 +177,6 @@ add_custom_command(
         --enum-class-locations "NormalizationType:_libskit.NormalizationType"
         --ignore-invalid-expressions "libskit::|\\b[mMnN]\\b"
         --print-invalid-expressions-as-is
-        --exit-code
     DEPENDS _libskit
     COMMENT "Generating pybind11 stubs for _libskit"
     VERBATIM
