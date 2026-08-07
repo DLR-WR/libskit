@@ -73,10 +73,17 @@ find_llvm_config() {
 
 clang_dev_present() {
     # Check that Clang static development libs are installed (needed by ClangConfig.cmake)
-    local llvm_cfg
-    llvm_cfg="$(find_llvm_config 2>/dev/null)" || return 1
     local prefix
-    prefix="$("$llvm_cfg" --prefix 2>/dev/null)" || return 1
+    local llvm_cfg
+    llvm_cfg="$(find_llvm_config 2>/dev/null)"
+    if [[ -n "$llvm_cfg" ]]; then
+        prefix="$("$llvm_cfg" --prefix 2>/dev/null)" || return 1
+    else
+        # Windows LLVM ships no llvm-config; derive prefix from clang location.
+        local clang_bin
+        clang_bin="$(command -v clang 2>/dev/null)" || return 1
+        prefix="$(dirname "$(dirname "$clang_bin")")"
+    fi
     # Linux/macOS ship .a static libs; Windows LLVM ships .lib.
     [[ -f "$prefix/lib/libclangBasic.a" || -f "$prefix/lib/clangBasic.lib" ]]
 }
@@ -91,12 +98,20 @@ ensure_system_dependencies() {
                     export PATH="$llvm_bin:$PATH"
                 fi
             done
+            # The official LLVM Windows binary release does NOT ship
+            # llvm-config.exe. Skip that specific check; the rest of the script
+            # has a Windows branch that derives LLVM_MAJOR/LLVM_CMAKE_DIR
+            # directly from clang.
+            if command -v clang >/dev/null 2>&1 && clang_dev_present; then
+                return
+            fi
+            ;;
+        *)
+            if command -v clang >/dev/null 2>&1 && find_llvm_config >/dev/null 2>&1 && clang_dev_present; then
+                return
+            fi
             ;;
     esac
-
-    if command -v clang >/dev/null 2>&1 && find_llvm_config >/dev/null 2>&1 && clang_dev_present; then
-        return
-    fi
 
     # Debug hint: dump what we found so far to help diagnose CI failures.
     echo "system-deps check failed:" >&2
@@ -125,9 +140,22 @@ ensure_system_dependencies() {
 
 ensure_system_dependencies
 
-LLVM_CONFIG="$(find_llvm_config)"
-LLVM_CMAKE_DIR="$($LLVM_CONFIG --cmakedir)"
-LLVM_MAJOR="$($LLVM_CONFIG --version | cut -d. -f1)"
+# The official LLVM Windows binary release lacks llvm-config.exe, so on
+# Windows we derive the same values (major version + cmake module dir) from
+# clang's install prefix and `clang --version`.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        CLANG_BIN_PATH="$(command -v clang)"
+        LLVM_PREFIX="$(dirname "$(dirname "$CLANG_BIN_PATH")")"
+        LLVM_CMAKE_DIR="$LLVM_PREFIX/lib/cmake/llvm"
+        LLVM_MAJOR="$(clang --version | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1 | cut -d. -f1)"
+        ;;
+    *)
+        LLVM_CONFIG="$(find_llvm_config)"
+        LLVM_CMAKE_DIR="$($LLVM_CONFIG --cmakedir)"
+        LLVM_MAJOR="$($LLVM_CONFIG --version | cut -d. -f1)"
+        ;;
+esac
 # Derive Clang cmake dir from LLVM cmake dir (sibling 'clang' directory)
 CLANG_CMAKE_DIR="${LLVM_CMAKE_DIR%/llvm}/clang"
 PLUGIN_DIR="$ENZYME_PREFIX/build/Enzyme"
