@@ -82,9 +82,27 @@ clang_dev_present() {
 }
 
 ensure_system_dependencies() {
+    # git-bash's $PATH does not always inherit the LLVM bin dir added via
+    # $GITHUB_PATH on Windows runners; probe the standard install location.
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            for llvm_bin in "/c/Program Files/LLVM/bin" "/c/Program Files (x86)/LLVM/bin"; do
+                if [[ -x "$llvm_bin/clang.exe" && ":$PATH:" != *":$llvm_bin:"* ]]; then
+                    export PATH="$llvm_bin:$PATH"
+                fi
+            done
+            ;;
+    esac
+
     if command -v clang >/dev/null 2>&1 && find_llvm_config >/dev/null 2>&1 && clang_dev_present; then
         return
     fi
+
+    # Debug hint: dump what we found so far to help diagnose CI failures.
+    echo "system-deps check failed:" >&2
+    echo "  clang         = $(command -v clang || echo '<not found>')" >&2
+    echo "  llvm-config   = $(find_llvm_config 2>/dev/null || echo '<not found>')" >&2
+    echo "  PATH          = $PATH" >&2
 
     if command -v apt-get >/dev/null 2>&1; then
         install_with_apt
