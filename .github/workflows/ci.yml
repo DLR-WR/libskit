@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff==0.9.1
+      # Advisory: pre-existing lint debt (E402/F401/E741). Drop --exit-zero after cleanup.
+      - run: ruff check --output-format=github --exit-zero src tests
+
+  build-and-test:
+    name: Build & test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Setup Enzyme toolchain
+        uses: ./.github/actions/setup-enzyme
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # pybind11 must match the interpreter's ABI; system pybind11-dev (2.x)
+          # mixed with the venv's numpy 2.x causes SEGFAULT in the Eigen caster.
+          pip install pybind11
+          pip install pytest pytest-cov "coverage[toml]"
+
+      - name: Configure
+        run: |
+          rm -f build/CMakeCache.txt
+          PYBIND11_DIR=$(python -c 'import pybind11, sys; sys.stdout.write(pybind11.get_cmake_dir())')
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_C_COMPILER="$CC" \
+            -DCMAKE_CXX_COMPILER="$CXX" \
+            -Dpybind11_DIR="$PYBIND11_DIR" \
+            -DPython_EXECUTABLE="$(which python)" \
+            -DBUILD_TESTING=ON \
+            -DENZYME_PLUGIN_PATH="$ENZYME_PLUGIN_PATH"
+
+      - name: Build
+        run: cmake --build build -j$(nproc)
+
+      - name: C++ tests (ctest)
+        run: ctest --test-dir build --output-on-failure --output-junit test-results-cpp.xml
+
+      - name: Python tests (pytest + coverage)
+        env:
+          PYTHONPATH: build
+        run: |
+          pytest tests/ \
+            --junitxml=test-results-python.xml \
+            --cov=libskit --cov-report=xml:coverage.xml --cov-report=term \
+            -v --ignore=tests/test_utils.py
+          coverage report --fail-under=25
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-py${{ matrix.python-version }}
+          path: |
+            test-results-cpp.xml
+            test-results-python.xml
+            coverage.xml
+          retention-days: 14
+
+      - name: Publish test summary
+        if: always()
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          check_name: Test results (Python ${{ matrix.python-version }})
+          junit_files: |
+            test-results-cpp.xml
+            test-results-python.xml
+
+  docs-smoke:
+    name: Docs smoke build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install apt deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y doxygen graphviz
+      - name: Install doc deps
+        # Runtime deps too: autodoc imports libskit.* modules which pull in pandas/scipy/etc.
+        run: pip install -r docs/requirements.txt -r requirements.txt
+      - name: Doxygen
+        run: |
+          mkdir -p docs/build/doxygen
+          cd docs/source && doxygen Doxyfile
+      - name: Sphinx build
+        run: make -C docs html
