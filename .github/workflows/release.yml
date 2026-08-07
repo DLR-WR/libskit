@@ -11,10 +11,22 @@ on:
         default: testpypi
         type: choice
         options: [testpypi, pypi]
+      version:
+        # Required because setuptools_scm otherwise generates a local segment
+        # like 0.2.dev4+g9f773c6c1 which PyPI rejects (PEP 440 local versions).
+        description: "Version to publish (must be PEP 440, e.g. 0.1.0rc1, 0.1.0.dev1)"
+        required: true
+        default: 0.0.0.dev0
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  # For workflow_dispatch runs, pin the version so setuptools_scm does not
+  # emit a PyPI-invalid local segment (e.g. 0.2.dev4+g9f773c6c1). For tag
+  # pushes this is empty and setuptools_scm resolves the tag naturally.
+  SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LIBSKIT: ${{ inputs.version }}
 
 jobs:
   build-wheels:

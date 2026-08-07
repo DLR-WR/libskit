@@ -149,6 +149,10 @@ before-all = "bash /project/scripts/setup_enzyme_toolchain.sh"
 before-build = "pip install --upgrade pip && pip install pybind11 pybind11-stubgen"
 # Ensure pip can find manylinux wheels for scipy
 environment = { PIP_ONLY_BINARY = "scipy", ENZYME_PREFIX = "/tmp/libskit-enzyme", CC = "clang", CXX = "clang++", CMAKE_ARGS = "-DENZYME_PLUGIN_PATH=/tmp/libskit-enzyme/ClangEnzyme.so" }
+# Forward the setuptools_scm pretend-version from the outer CI env into the
+# manylinux build container so workflow_dispatch dry-runs produce a clean
+# PEP 440 version instead of a rejected local segment (e.g. +g<sha>).
+environment-pass = ["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LIBSKIT"]
 
 [tool.cibuildwheel.windows]
 # Build for AMD64 (most common)
