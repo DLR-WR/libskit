@@ -13,15 +13,14 @@ jobs:
   lint:
     name: Lint (ruff)
     runs-on: ubuntu-latest
-    # Advisory: pre-existing lint debt (E402/F401/E741). Flip to blocking after cleanup.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install ruff==0.9.1
-      - run: ruff check src tests
+      # Advisory: pre-existing lint debt (E402/F401/E741). Drop --exit-zero after cleanup.
+      - run: ruff check --output-format=github --exit-zero src tests
 
   build-and-test:
     name: Build & test (Python ${{ matrix.python-version }})
@@ -52,14 +51,20 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          # pybind11 must match the interpreter's ABI; system pybind11-dev (2.x)
+          # mixed with the venv's numpy 2.x causes SEGFAULT in the Eigen caster.
+          pip install pybind11
           pip install pytest pytest-cov "coverage[toml]"
 
       - name: Configure
         run: |
           rm -f build/CMakeCache.txt
+          PYBIND11_DIR=$(python -c 'import pybind11, sys; sys.stdout.write(pybind11.get_cmake_dir())')
           cmake -S . -B build -G Ninja \
             -DCMAKE_C_COMPILER="$CC" \
             -DCMAKE_CXX_COMPILER="$CXX" \
+            -Dpybind11_DIR="$PYBIND11_DIR" \
+            -DPython_EXECUTABLE="$(which python)" \
             -DBUILD_TESTING=ON \
             -DENZYME_PLUGIN_PATH="$ENZYME_PLUGIN_PATH"
 
