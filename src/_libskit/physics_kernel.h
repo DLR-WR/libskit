@@ -238,18 +238,22 @@ inline double doppler_sigma(double atomic_weight, double wavelength, double T) {
 }
 
 inline double stark_fwhm(const EmissionLine &line, double ne, double T) {
-  double w = std::pow(10.0, line.a0 + line.a1 * std::log10(T) +
-                                line.a2 * std::log10(T) * std::log10(T)) /
+  // exp(x*ln10) instead of pow(10,x): avoids llvm.exp10 intrinsic, which
+  // Enzyme v0.0.256 cannot differentiate on newer LLVMs (e.g. LLVM 22).
+  const double logT = std::log10(T);
+  double w = std::exp((line.a0 + line.a1 * logT + line.a2 * logT * logT) *
+                      std::numbers::ln10) /
              10.0;
   return w * ne / line.n_e_ref * 1e-6;
 }
 
 inline double stark_shift(const EmissionLine &line, double T) {
-  double w = std::pow(10.0, line.a0 + line.a1 * std::log10(T) +
-                                line.a2 * std::log10(T) * std::log10(T));
+  const double logT = std::log10(T);
+  double w = std::exp((line.a0 + line.a1 * logT + line.a2 * logT * logT) *
+                      std::numbers::ln10);
   return w *
-         (line.b0 + line.b1 * std::log10(T) +
-          line.b2 * std::log10(T) * std::log10(T)) /
+         (line.b0 + line.b1 * logT +
+          line.b2 * logT * logT) /
          10.0;
 }
 

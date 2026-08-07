@@ -77,7 +77,8 @@ clang_dev_present() {
     llvm_cfg="$(find_llvm_config 2>/dev/null)" || return 1
     local prefix
     prefix="$("$llvm_cfg" --prefix 2>/dev/null)" || return 1
-    [[ -f "$prefix/lib/libclangBasic.a" ]]
+    # Linux/macOS ship .a static libs; Windows LLVM ships .lib.
+    [[ -f "$prefix/lib/libclangBasic.a" || -f "$prefix/lib/clangBasic.lib" ]]
 }
 
 ensure_system_dependencies() {
@@ -112,10 +113,12 @@ LLVM_MAJOR="$($LLVM_CONFIG --version | cut -d. -f1)"
 # Derive Clang cmake dir from LLVM cmake dir (sibling 'clang' directory)
 CLANG_CMAKE_DIR="${LLVM_CMAKE_DIR%/llvm}/clang"
 PLUGIN_DIR="$ENZYME_PREFIX/build/Enzyme"
-# macOS emits .dylib, Linux emits .so; the symlink used by callers is always .so.
+# macOS emits .dylib, Windows emits .dll, Linux emits .so; the stable alias
+# used by callers is always ClangEnzyme.so (extension is irrelevant to dlopen).
 case "$(uname -s)" in
-    Darwin) PLUGIN_EXT="dylib" ;;
-    *)      PLUGIN_EXT="so" ;;
+    Darwin)             PLUGIN_EXT="dylib" ;;
+    MINGW*|MSYS*|CYGWIN*) PLUGIN_EXT="dll" ;;
+    *)                  PLUGIN_EXT="so" ;;
 esac
 PLUGIN_REAL="$PLUGIN_DIR/ClangEnzyme-${LLVM_MAJOR}.${PLUGIN_EXT}"
 PLUGIN_LINK="$ENZYME_PREFIX/ClangEnzyme.so"
@@ -142,7 +145,7 @@ fi
 
 if [[ ! -f "$PLUGIN_REAL" ]]; then
     shopt -s nullglob
-    plugin_candidates=("$PLUGIN_DIR"/ClangEnzyme-*.so "$PLUGIN_DIR"/ClangEnzyme-*.dylib)
+    plugin_candidates=("$PLUGIN_DIR"/ClangEnzyme-*.so "$PLUGIN_DIR"/ClangEnzyme-*.dylib "$PLUGIN_DIR"/ClangEnzyme-*.dll)
     shopt -u nullglob
     if [[ ${#plugin_candidates[@]} -eq 0 ]]; then
         echo "Enzyme build completed, but no ClangEnzyme plugin was produced in $PLUGIN_DIR" >&2
@@ -151,7 +154,12 @@ if [[ ! -f "$PLUGIN_REAL" ]]; then
     PLUGIN_REAL="${plugin_candidates[0]}"
 fi
 
-ln -sf "$PLUGIN_REAL" "$PLUGIN_LINK"
+# Windows lacks unprivileged symlinks in git-bash; a plain copy is fine because
+# clang's -fpass-plugin loads by path regardless of extension.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) cp -f "$PLUGIN_REAL" "$PLUGIN_LINK" ;;
+    *)                    ln -sf "$PLUGIN_REAL" "$PLUGIN_LINK" ;;
+esac
 
 # Resolve versioned clang/clang++ binaries matching the detected LLVM version
 CLANG_BIN="$(command -v "clang-${LLVM_MAJOR}" 2>/dev/null || command -v clang)"

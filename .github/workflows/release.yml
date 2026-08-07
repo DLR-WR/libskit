@@ -32,8 +32,8 @@ jobs:
   build-wheels:
     name: Build wheels (${{ matrix.os }} ${{ matrix.arch }})
     runs-on: ${{ matrix.os }}
-    # Windows leg is best-effort until Enzyme-on-Windows is worked out;
-    # a failure there must not block the release on Linux + macOS.
+    # Windows is newer and more likely to break; keep it non-blocking for now
+    # so a Windows regression can't hold up a Linux + macOS release.
     continue-on-error: ${{ matrix.experimental || false }}
     strategy:
       fail-fast: false
@@ -75,11 +75,22 @@ jobs:
           echo "LDFLAGS=-L$LLVM_PREFIX/lib" >> "$GITHUB_ENV"
           echo "CPPFLAGS=-I$LLVM_PREFIX/include" >> "$GITHUB_ENV"
 
+      # Windows: install the official LLVM Windows binary release (via choco),
+      # which ships clang/clang++/llvm-config + full lib/cmake/{llvm,clang}
+      # modules, plus ninja. Both are prepended to PATH so setup_enzyme_toolchain.sh
+      # (run through git-bash by cibuildwheel's before-all) picks them up.
+      - name: Install LLVM + Ninja (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install -y --no-progress llvm ninja
+          "C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Build wheels (cibuildwheel)
         # Enzyme setup:
         #   * Linux:   inside the manylinux container via [tool.cibuildwheel.linux].before-all
         #   * macOS:   on the host via [tool.cibuildwheel.macos].before-all
-        #   * Windows: not yet supported; the job runs with continue-on-error
+        #   * Windows: on the host via [tool.cibuildwheel.windows].before-all (bash-invoked)
         uses: pypa/cibuildwheel@v2.21.3
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
