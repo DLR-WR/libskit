@@ -161,7 +161,9 @@ environment-pass = ["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LIBSKIT"]
 # invoked through git-bash (pre-installed on windows-latest runners) to build
 # the ClangEnzyme plugin against that LLVM.
 archs = ["AMD64"]
-before-all = "bash -lc '{project}/scripts/setup_enzyme_toolchain.sh'"
+# Use `bash -c` (not `-lc`): a login shell would source git-bash's /etc/profile
+# and reset PATH, stripping the LLVM bin dir added by release.yml via $GITHUB_PATH.
+before-all = "bash -c '{project}/scripts/setup_enzyme_toolchain.sh'"
 before-build = "pip install pybind11 pybind11-stubgen"
 environment = { ENZYME_PREFIX = "C:/enzyme-cache", CC = "clang", CXX = "clang++", CMAKE_GENERATOR = "Ninja", CMAKE_ARGS = "-DENZYME_PLUGIN_PATH=C:/enzyme-cache/ClangEnzyme.so" }
 
