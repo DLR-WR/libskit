@@ -1,0 +1,17 @@
+abstract: A software tool for the simulation and analysis of laser-induced breakdown
+  spectroscopy (LIBS) spectra.
+authors:
+- family-names: Egerland
+  given-names: Christoph H.
+  orcid: 0000-0002-1099-6433
+cff-version: 1.2.0
+date-released: '2026-08-04'
+doi: 10.5281/zenodo.21788186
+license:
+- mit
+message: If you use this software, please cite it using the metadata from this file.
+repository-code: https://github.com/DLR-WR/libskit/tree/0.1
+title: 'LIBSkit: A software tool for the simulation and analysis of laser-induced
+  breakdown spectroscopy (LIBS) spectra'
+type: software
+version: '0.1'

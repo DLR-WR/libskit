@@ -3,6 +3,7 @@
 [![CI](https://github.com/DLR-WR/libskit/actions/workflows/ci.yml/badge.svg)](https://github.com/DLR-WR/libskit/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/libskit/badge/?version=latest)](https://libskit.readthedocs.io/en/latest/)
 [![PyPI](https://img.shields.io/pypi/v/libskit.svg)](https://pypi.org/project/libskit/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21788186.svg)](https://doi.org/10.5281/zenodo.21788186)
 
 A software tool for the simulation and analysis of laser-induced breakdown spectroscopy (LIBS) spectra.
 
@@ -30,13 +31,29 @@ spectrum = instrument.calculate_spectrum(wavelengths, model)
 
 ## Installation
 
-This package is only available as a source build — it is not published on PyPI or any package registry.
+Pre-built wheels are published on PyPI for **Linux (x86_64)** and **macOS
+(x86_64 and Apple Silicon)**:
 
-Source builds need a Clang toolchain with the Enzyme automatic-differentiation plugin.
+```bash
+pip install libskit
+```
 
-- **Linux**: ``sudo apt install cmake ninja-build git clang llvm-dev``
-- **macOS**: install LLVM/Clang and CMake, then build Enzyme against that LLVM
-- **Windows**: use an LLVM/Clang toolchain with Enzyme available
+**Windows is not supported** as a binary target: the official LLVM Windows
+distribution does not ship the static Clang development libraries that Enzyme
+needs to build against, so we cannot produce Windows wheels in CI. Windows
+users must build from source (see below) with a full LLVM install that
+includes the Clang static libs (e.g. a self-built LLVM or conda-forge's
+`llvmdev` package).
+
+### Building from source
+
+Source builds need a Clang toolchain with the Enzyme automatic-differentiation
+plugin.
+
+- **Linux**: `sudo apt install cmake ninja-build git clang llvm-dev`
+- **macOS**: `brew install llvm cmake ninja`
+- **Windows**: install a full LLVM toolchain (including static Clang dev libs)
+  and Ninja; the CI-provided setup script is not sufficient on Windows
 
 Then:
 ```bash
@@ -53,8 +70,6 @@ pip install -r requirements.txt
 
 This builds the Enzyme plugin and installs the package in one step.
 
-> **Note:** Eigen3 is downloaded automatically during build if not found on your system.
-
 ## Prerequisites (for development)
 To build the code from source you need:
 - Clang-compatible C++20 compiler
@@ -66,8 +81,19 @@ To build the code from source you need:
 The `notebooks/` directory in this repository contains a curated set of tutorials (`tutorial_1_…` through `tutorial_7_…`).
 
 
-## Contributors
-Christoph H. Egerland
 
-## License
-MIT
+## Citation
+
+If you use LIBSkit in your research, please cite it:
+
+```bibtex
+@software{libskit,
+  author  = {Egerland, Christoph H.},
+  title   = {LIBSkit: A software tool for the simulation and analysis of
+             laser-induced breakdown spectroscopy (LIBS) spectra},
+  year    = {2026},
+  version = {0.1},
+  doi     = {10.5281/zenodo.21788186},
+  url     = {https://doi.org/10.5281/zenodo.21788186},
+}
+```
