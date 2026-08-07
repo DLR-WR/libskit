@@ -1,0 +1,108 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target (pypi = production, testpypi = dry run)"
+        required: true
+        default: testpypi
+        type: choice
+        options: [testpypi, pypi]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-wheels:
+    name: Build Linux x86_64 wheels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build wheels (cibuildwheel)
+        # Enzyme is built inside the manylinux container by the
+        # [tool.cibuildwheel.linux].before-all hook in pyproject.toml.
+        uses: pypa/cibuildwheel@v2.21.3
+        with:
+          output-dir: wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-wheels
+          path: wheelhouse/*.whl
+          retention-days: 14
+
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build sdist
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --sdist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sdist
+          path: dist/*.tar.gz
+          retention-days: 14
+
+  publish:
+    name: Publish to PyPI + GitHub Release
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    # Environment binds Trusted Publishing; PyPI project must whitelist
+    # (owner/repo, workflow=release.yml, environment=pypi|testpypi).
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.target || 'pypi' }}
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-wheels
+          path: dist
+      - name: Download sdist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-sdist
+          path: dist
+
+      - name: Publish to TestPyPI
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+      - name: Publish to PyPI
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

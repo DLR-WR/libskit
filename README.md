@@ -1,4 +1,9 @@
 # LIBSkit
+
+[![CI](https://github.com/DLR-WR/libskit/actions/workflows/ci.yml/badge.svg)](https://github.com/DLR-WR/libskit/actions/workflows/ci.yml)
+[![Documentation Status](https://readthedocs.org/projects/libskit/badge/?version=latest)](https://libskit.readthedocs.io/en/latest/)
+[![PyPI](https://img.shields.io/pypi/v/libskit.svg)](https://pypi.org/project/libskit/)
+
 A software tool for the simulation and analysis of laser-induced breakdown spectroscopy (LIBS) spectra.
 
 The simulation core is written in C++ with Python bindings via pybind11. Atomic databases (NIST ASD lines, ionization energies, energy levels) are bundled with the package and loaded automatically on import.

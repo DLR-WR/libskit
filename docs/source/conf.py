@@ -50,6 +50,9 @@ breathe_default_project = "libskit"
 # Autodoc
 autodoc_typehints = "description"
 autodoc_member_order = "bysource"
+# Mock the compiled C++ extension so RTD (and docs-smoke CI) can import
+# `libskit` without building Enzyme/pybind11.
+autodoc_mock_imports = ["libskit._libskit"]
 
 # Intersphinx
 intersphinx_mapping = {

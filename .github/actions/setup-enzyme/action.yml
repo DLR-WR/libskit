@@ -1,0 +1,51 @@
+name: Setup Enzyme toolchain
+description: >
+  Install system build dependencies, restore or build the Enzyme Clang plugin
+  from `scripts/setup_enzyme_toolchain.sh`, and export CC/CXX/ENZYME_PLUGIN_PATH
+  to $GITHUB_ENV so subsequent steps can invoke cmake / pip / cibuildwheel.
+
+inputs:
+  enzyme-prefix:
+    description: Directory where the Enzyme toolchain is installed and cached.
+    required: false
+    default: /tmp/libskit-enzyme
+
+runs:
+  using: composite
+  steps:
+    - name: Install apt build dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+          build-essential cmake ninja-build git ca-certificates \
+          clang llvm-dev libclang-dev lld \
+          libeigen3-dev libgtest-dev pybind11-dev libnlopt-dev
+
+    - name: Restore Enzyme toolchain cache
+      id: enzyme-cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ inputs.enzyme-prefix }}
+        key: enzyme-${{ runner.os }}-${{ hashFiles('scripts/setup_enzyme_toolchain.sh') }}
+
+    - name: Build Enzyme toolchain (cache miss)
+      if: steps.enzyme-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        ENZYME_PREFIX: ${{ inputs.enzyme-prefix }}
+      run: bash ./scripts/setup_enzyme_toolchain.sh
+
+    - name: Export Enzyme environment
+      shell: bash
+      env:
+        ENZYME_PREFIX: ${{ inputs.enzyme-prefix }}
+      run: |
+        # Source the env file emitted by setup_enzyme_toolchain.sh, then forward
+        # the resulting variables to subsequent steps via $GITHUB_ENV.
+        source "$ENZYME_PREFIX/env.sh"
+        echo "CC=$CC" >> "$GITHUB_ENV"
+        echo "CXX=$CXX" >> "$GITHUB_ENV"
+        echo "ENZYME_PLUGIN_PATH=$ENZYME_PLUGIN_PATH" >> "$GITHUB_ENV"
+        echo "ENZYME_PREFIX=$ENZYME_PREFIX" >> "$GITHUB_ENV"
+        echo "CMAKE_ARGS=-DCMAKE_C_COMPILER=$CC -DCMAKE_CXX_COMPILER=$CXX -DENZYME_PLUGIN_PATH=$ENZYME_PLUGIN_PATH" >> "$GITHUB_ENV"
