@@ -30,8 +30,18 @@ env:
 
 jobs:
   build-wheels:
-    name: Build Linux x86_64 wheels
-    runs-on: ubuntu-latest
+    name: Build wheels (${{ matrix.os }} ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            cibw_archs: x86_64
+          - os: macos-14
+            arch: arm64
+            cibw_archs: arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,16 +52,35 @@ jobs:
         with:
           python-version: "3.11"
 
+      # macOS: Enzyme needs a real LLVM (not Apple Clang) with matching
+      # llvm-config. Homebrew ships one; we put it on PATH so the existing
+      # scripts/setup_enzyme_toolchain.sh picks it up (it runs inside
+      # cibuildwheel's before-all on the host, not in a container).
+      - name: Install Homebrew LLVM (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm ninja
+          LLVM_PREFIX=$(brew --prefix llvm)
+          echo "$LLVM_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "LDFLAGS=-L$LLVM_PREFIX/lib" >> "$GITHUB_ENV"
+          echo "CPPFLAGS=-I$LLVM_PREFIX/include" >> "$GITHUB_ENV"
+
       - name: Build wheels (cibuildwheel)
-        # Enzyme is built inside the manylinux container by the
-        # [tool.cibuildwheel.linux].before-all hook in pyproject.toml.
+        # Enzyme setup:
+        #   * Linux: inside the manylinux container via [tool.cibuildwheel.linux].before-all
+        #   * macOS: on the host via [tool.cibuildwheel.macos].before-all
+        # Windows wheels are not built: the official LLVM Windows binaries do
+        # not ship the static Clang dev libs Enzyme needs. Windows users install
+        # from sdist and provide their own LLVM+Enzyme toolchain.
         uses: pypa/cibuildwheel@v2.21.3
+        env:
+          CIBW_ARCHS: ${{ matrix.cibw_archs }}
         with:
           output-dir: wheelhouse
 
       - uses: actions/upload-artifact@v4
         with:
-          name: dist-wheels
+          name: dist-wheels-${{ matrix.os }}-${{ matrix.arch }}
           path: wheelhouse/*.whl
           retention-days: 14
 
@@ -94,8 +123,9 @@ jobs:
       - name: Download wheel artifacts
         uses: actions/download-artifact@v4
         with:
-          name: dist-wheels
+          pattern: dist-wheels-*
           path: dist
+          merge-multiple: true
       - name: Download sdist artifact
         uses: actions/download-artifact@v4
         with:

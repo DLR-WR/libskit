@@ -218,9 +218,11 @@ T get_doppler_standard_deviation(const std::string &ion,
 template <typename T>
 T get_stark_broadening_fwhm(const EmissionLine &line, T electron_density,
                             T temperature) {
-
-  const auto w = pow(10, line.a0 + line.a1 * log10(temperature) +
-                             line.a2 * pow(log10(temperature), 2)) /
+  // exp(x*ln10) instead of pow(10,x): avoids llvm.exp10 intrinsic, which
+  // Enzyme v0.0.256 cannot differentiate on newer LLVMs (e.g. LLVM 22).
+  const auto logT = log10(temperature);
+  const auto w = exp((line.a0 + line.a1 * logT +
+                      line.a2 * logT * logT) * std::numbers::ln10) /
                  10.0; // w is given in angstroem, divide by 10 to get nanometer
   const auto fwhm = w * electron_density / line.n_e_ref *
                     1e-6; // the line n_e_ref is in cm^-3
@@ -239,12 +241,12 @@ T get_stark_broadening_fwhm(const EmissionLine &line, T electron_density,
  */
 template <typename T>
 T get_stark_shift(const EmissionLine &line, T temperature) {
-
-  const auto w = pow(10, line.a0 + line.a1 * log10(temperature) +
-                             line.a2 * pow(log10(temperature), 2));
+  const auto logT = log10(temperature);
+  const auto w = exp((line.a0 + line.a1 * logT +
+                      line.a2 * logT * logT) * std::numbers::ln10);
   const auto stark_shift_nm = w *
-                 (line.b0 + line.b1 * log10(temperature) +
-                  line.b2 * pow(log10(temperature), 2)) /
+                 (line.b0 + line.b1 * logT +
+                  line.b2 * logT * logT) /
                  10.0; // stark_shift_nm is given in angstroem, divide by 10 to get nanometer
   return stark_shift_nm;
 }
