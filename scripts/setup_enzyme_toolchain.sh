@@ -214,6 +214,10 @@ if [[ ! -f "$PLUGIN_REAL" ]]; then
         echo "Warning: Clang cmake dir not found at $CLANG_CMAKE_DIR; ClangEnzyme plugin may not build" >&2
     fi
     echo "[toolchain] cmake configure: ${cmake_args[*]}"
+    echo "[toolchain] LLVM cmake dir contents:"
+    ls "$(cygpath -u "$LLVM_CMAKE_DIR" 2>/dev/null || echo "$LLVM_CMAKE_DIR")" 2>/dev/null || echo "(listing failed)"
+    echo "[toolchain] LLVMConfig.cmake search under LLVM_PREFIX:"
+    find "$(cygpath -u "$(cygpath -m "$LLVM_PREFIX" 2>/dev/null || echo "$LLVM_PREFIX")" 2>/dev/null || echo "$LLVM_PREFIX")" -name "LLVMConfig.cmake" 2>/dev/null || echo "(not found)"
     cmake "${cmake_args[@]}"
     cmake --build "$ENZYME_PREFIX/build" --target "ClangEnzyme-${LLVM_MAJOR}" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 fi
