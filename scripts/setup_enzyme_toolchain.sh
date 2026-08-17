@@ -1,7 +1,6 @@
 #!/bin/bash
 
 set -euo pipefail
-set -x
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
@@ -149,6 +148,7 @@ ensure_system_dependencies() {
 }
 
 ensure_system_dependencies
+echo "[toolchain] uname=$(uname -s) clang=$(command -v clang 2>/dev/null || echo '<missing>')"
 
 # The official LLVM Windows binary release lacks llvm-config.exe, so on
 # Windows we derive the same values (major version + cmake module dir) from
@@ -172,6 +172,9 @@ case "$(uname -s)" in
 esac
 # Derive Clang cmake dir from LLVM cmake dir (sibling 'clang' directory)
 CLANG_CMAKE_DIR="${LLVM_CMAKE_DIR%/llvm}/clang"
+echo "[toolchain] LLVM_PREFIX=$LLVM_PREFIX  LLVM_MAJOR=$LLVM_MAJOR"
+echo "[toolchain] LLVM_CMAKE_DIR=$LLVM_CMAKE_DIR  exists=$([ -d "$LLVM_CMAKE_DIR" ] && echo yes || echo NO)"
+echo "[toolchain] CLANG_CMAKE_DIR=$CLANG_CMAKE_DIR  exists=$([ -d "$CLANG_CMAKE_DIR" ] && echo yes || echo NO)"
 PLUGIN_DIR="$ENZYME_PREFIX/build/Enzyme"
 # macOS emits .dylib, Windows emits .dll, Linux emits .so; the stable alias
 # used by callers is always ClangEnzyme.so (extension is irrelevant to dlopen).
@@ -185,8 +188,10 @@ PLUGIN_LINK="$ENZYME_PREFIX/ClangEnzyme.so"
 
 mkdir -p "$ENZYME_PREFIX"
 
+echo "[toolchain] PLUGIN_REAL=$PLUGIN_REAL"
 if [[ ! -f "$PLUGIN_REAL" ]]; then
     rm -rf "$ENZYME_PREFIX/src" "$ENZYME_PREFIX/build"
+    echo "[toolchain] cloning Enzyme $ENZYME_GIT_REF"
     git clone --depth 1 --branch "$ENZYME_GIT_REF" "$ENZYME_REPO" "$ENZYME_PREFIX/src"
     cmake_args=(
         -S "$ENZYME_PREFIX/src/enzyme"
@@ -199,6 +204,7 @@ if [[ ! -f "$PLUGIN_REAL" ]]; then
     else
         echo "Warning: Clang cmake dir not found at $CLANG_CMAKE_DIR; ClangEnzyme plugin may not build" >&2
     fi
+    echo "[toolchain] cmake configure: ${cmake_args[*]}"
     cmake "${cmake_args[@]}"
     cmake --build "$ENZYME_PREFIX/build" --target "ClangEnzyme-${LLVM_MAJOR}" -j"$(getconf _NPROCESSORS_ONLN 2>/dev/null || echo 4)"
 fi
