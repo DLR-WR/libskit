@@ -155,11 +155,11 @@ environment = { PIP_ONLY_BINARY = "scipy", ENZYME_PREFIX = "/tmp/libskit-enzyme"
 environment-pass = ["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LIBSKIT"]
 
 [tool.cibuildwheel.windows]
-# Windows wheels are not built in CI. The official LLVM Windows binary release
-# ships neither llvm-config.exe nor the static Clang dev libs (clangBasic.lib
-# etc.) needed to build the Enzyme plugin. Windows users install from sdist
-# and provide their own LLVM+Enzyme toolchain.
-archs = []
+archs = ["AMD64"]
+before-all = "bash {project}/scripts/setup_enzyme_toolchain.sh"
+before-build = "pip install pybind11 pybind11-stubgen"
+environment = { ENZYME_PREFIX = "C:/libskit-enzyme", CC = "clang", CXX = "clang++", CMAKE_ARGS = "-DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DENZYME_PLUGIN_PATH=C:/libskit-enzyme/ClangEnzyme.so" }
+environment-pass = ["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_LIBSKIT", "LLVM_PATH"]
 
 [tool.cibuildwheel.macos]
 # Per-arch native builds are driven from release.yml (macos-13 = x86_64,

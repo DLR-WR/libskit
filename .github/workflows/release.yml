@@ -42,6 +42,9 @@ jobs:
           - os: macos-14
             arch: arm64
             cibw_archs: arm64
+          - os: windows-latest
+            arch: AMD64
+            cibw_archs: AMD64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,13 +68,27 @@ jobs:
           echo "LDFLAGS=-L$LLVM_PREFIX/lib" >> "$GITHUB_ENV"
           echo "CPPFLAGS=-I$LLVM_PREFIX/include" >> "$GITHUB_ENV"
 
+      # Windows: install LLVM into a path without spaces so git-bash can use it
+      # unambiguously; sets CC/CXX and LLVM_PATH in the job environment.
+      - name: Install LLVM and Clang (Windows)
+        if: runner.os == 'Windows'
+        uses: KyleMayes/install-llvm-action@v2.0.9
+        with:
+          version: "18"
+          directory: ${{ runner.temp }}/llvm
+          env: true
+
+      - name: Set Enzyme prefix (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: echo "ENZYME_PREFIX=C:/libskit-enzyme" >> "$GITHUB_ENV"
+
       - name: Build wheels (cibuildwheel)
         # Enzyme setup:
         #   * Linux: inside the manylinux container via [tool.cibuildwheel.linux].before-all
         #   * macOS: on the host via [tool.cibuildwheel.macos].before-all
-        # Windows wheels are not built: the official LLVM Windows binaries do
-        # not ship the static Clang dev libs Enzyme needs. Windows users install
-        # from sdist and provide their own LLVM+Enzyme toolchain.
+        #   * Windows: on the host via [tool.cibuildwheel.windows].before-all;
+        #              LLVM installed above by install-llvm-action.
         uses: pypa/cibuildwheel@v2.21.3
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}

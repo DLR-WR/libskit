@@ -72,7 +72,7 @@ find_llvm_config() {
 }
 
 clang_dev_present() {
-    # Check that Clang static development libs are installed (needed by ClangConfig.cmake)
+    # Check that Clang development files are installed (needed by ClangConfig.cmake)
     local prefix
     local llvm_cfg
     llvm_cfg="$(find_llvm_config 2>/dev/null)"
@@ -82,10 +82,12 @@ clang_dev_present() {
         # Windows LLVM ships no llvm-config; derive prefix from clang location.
         local clang_bin
         clang_bin="$(command -v clang 2>/dev/null)" || return 1
-        prefix="$(dirname "$(dirname "$clang_bin")")"
+        prefix="$(dirname "$(dirname "$clang_bin")")" 
     fi
-    # Linux/macOS ship .a static libs; Windows LLVM ships .lib.
-    [[ -f "$prefix/lib/libclangBasic.a" || -f "$prefix/lib/clangBasic.lib" ]]
+    # Linux/macOS: static .a libs; Windows: .lib import libs or cmake configs.
+    [[ -f "$prefix/lib/libclangBasic.a" || \
+       -f "$prefix/lib/clangBasic.lib" || \
+       -f "$prefix/lib/cmake/clang/ClangConfig.cmake" ]]
 }
 
 ensure_system_dependencies() {
@@ -93,6 +95,10 @@ ensure_system_dependencies() {
     # $GITHUB_PATH on Windows runners; probe the standard install location.
     case "$(uname -s)" in
         MINGW*|MSYS*|CYGWIN*)
+            # install-llvm-action sets LLVM_PATH; prefer it over guessing.
+            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/bin" ]]; then
+                export PATH="${LLVM_PATH}/bin:$PATH"
+            fi
             for llvm_bin in "/c/Program Files/LLVM/bin" "/c/Program Files (x86)/LLVM/bin"; do
                 if [[ -x "$llvm_bin/clang.exe" && ":$PATH:" != *":$llvm_bin:"* ]]; then
                     export PATH="$llvm_bin:$PATH"
@@ -145,8 +151,12 @@ ensure_system_dependencies
 # clang's install prefix and `clang --version`.
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
-        CLANG_BIN_PATH="$(command -v clang)"
-        LLVM_PREFIX="$(dirname "$(dirname "$CLANG_BIN_PATH")")"
+        if [[ -n "${LLVM_PATH:-}" ]]; then
+            LLVM_PREFIX="${LLVM_PATH}"
+        else
+            CLANG_BIN_PATH="$(command -v clang)"
+            LLVM_PREFIX="$(dirname "$(dirname "$CLANG_BIN_PATH")")"
+        fi
         LLVM_CMAKE_DIR="$LLVM_PREFIX/lib/cmake/llvm"
         LLVM_MAJOR="$(clang --version | head -n1 | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1 | cut -d. -f1)"
         ;;
