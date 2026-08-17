@@ -99,8 +99,10 @@ ensure_system_dependencies() {
             # Windows path so bash can use it, then trust it without further checks.
             if [[ -n "${LLVM_PATH:-}" ]]; then
                 _llvm_posix=$(cygpath -u "${LLVM_PATH}" 2>/dev/null || echo "${LLVM_PATH}")
-                [[ ":$PATH:" != *":${_llvm_posix}/bin:"* ]] && export PATH="${_llvm_posix}/bin:$PATH"
-                return
+                if [[ ":$PATH:" != *":${_llvm_posix}/bin:"* ]]; then
+                    export PATH="${_llvm_posix}/bin:$PATH"
+                fi
+                return 0
             fi
             for llvm_bin in "/c/Program Files/LLVM/bin" "/c/Program Files (x86)/LLVM/bin"; do
                 if [[ -x "$llvm_bin/clang.exe" && ":$PATH:" != *":$llvm_bin:"* ]]; then
