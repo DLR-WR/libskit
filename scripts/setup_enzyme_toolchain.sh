@@ -95,9 +95,12 @@ ensure_system_dependencies() {
     # $GITHUB_PATH on Windows runners; probe the standard install location.
     case "$(uname -s)" in
         MINGW*|MSYS*|CYGWIN*)
-            # install-llvm-action sets LLVM_PATH; prefer it over guessing.
-            if [[ -n "${LLVM_PATH:-}" && -d "${LLVM_PATH}/bin" ]]; then
-                export PATH="${LLVM_PATH}/bin:$PATH"
+            # install-llvm-action provides a valid toolchain; cygpath converts the
+            # Windows path so bash can use it, then trust it without further checks.
+            if [[ -n "${LLVM_PATH:-}" ]]; then
+                _llvm_posix=$(cygpath -u "${LLVM_PATH}" 2>/dev/null || echo "${LLVM_PATH}")
+                [[ ":$PATH:" != *":${_llvm_posix}/bin:"* ]] && export PATH="${_llvm_posix}/bin:$PATH"
+                return
             fi
             for llvm_bin in "/c/Program Files/LLVM/bin" "/c/Program Files (x86)/LLVM/bin"; do
                 if [[ -x "$llvm_bin/clang.exe" && ":$PATH:" != *":$llvm_bin:"* ]]; then
@@ -152,7 +155,7 @@ ensure_system_dependencies
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*)
         if [[ -n "${LLVM_PATH:-}" ]]; then
-            LLVM_PREFIX="${LLVM_PATH}"
+            LLVM_PREFIX="$(cygpath -u "${LLVM_PATH}" 2>/dev/null || { CLANG_BIN_PATH="$(command -v clang)"; dirname "$(dirname "$CLANG_BIN_PATH")"; })"
         else
             CLANG_BIN_PATH="$(command -v clang)"
             LLVM_PREFIX="$(dirname "$(dirname "$CLANG_BIN_PATH")")"
