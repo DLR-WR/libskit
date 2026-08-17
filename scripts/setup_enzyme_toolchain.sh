@@ -174,6 +174,13 @@ case "$(uname -s)" in
 esac
 # Derive Clang cmake dir from LLVM cmake dir (sibling 'clang' directory)
 CLANG_CMAKE_DIR="${LLVM_CMAKE_DIR%/llvm}/clang"
+# cmake runs as a native Windows binary and needs Windows-style paths.
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+        LLVM_CMAKE_DIR="$(cygpath -m "$LLVM_CMAKE_DIR" 2>/dev/null || echo "$LLVM_CMAKE_DIR")"
+        CLANG_CMAKE_DIR="$(cygpath -m "$CLANG_CMAKE_DIR" 2>/dev/null || echo "$CLANG_CMAKE_DIR")"
+        ;;
+esac
 echo "[toolchain] LLVM_PREFIX=$LLVM_PREFIX  LLVM_MAJOR=$LLVM_MAJOR"
 echo "[toolchain] LLVM_CMAKE_DIR=$LLVM_CMAKE_DIR  exists=$([ -d "$LLVM_CMAKE_DIR" ] && echo yes || echo NO)"
 echo "[toolchain] CLANG_CMAKE_DIR=$CLANG_CMAKE_DIR  exists=$([ -d "$CLANG_CMAKE_DIR" ] && echo yes || echo NO)"
