@@ -902,14 +902,27 @@ PYBIND11_MODULE(_libskit, m) {
           where ``w = weight_early`` ∈ [0, 1] and the late weight is
           implicitly ``1 - w``.
 
+          The late state is not stored directly; it is derived from the
+          early state and three non-negative "delta" parameters that
+          encode the physically expected direction of plasma evolution:
+
+            late_temperature      = early_temperature      - delta_temperature
+            late_electron_density = early_electron_density - delta_electron_density
+            late_length            = early_length            + delta_length
+
+          Only early_*, delta_* and weight_early are fittable parameters
+          (see ``get_parameter_names()``); late_* remain readable as
+          computed, read-only attributes. Use :meth:`from_late_state` to
+          construct a model directly from absolute early/late states.
+
           Parameters
           ----------
           element_ratio : dict
               Element symbol → mass ratio (shared between both times).
           early_temperature, early_electron_density, early_length : float
               Plasma parameters of the early state.
-          late_temperature, late_electron_density, late_length : float
-              Plasma parameters of the late state.
+          delta_temperature, delta_electron_density, delta_length : float
+              Non-negative early-to-late deltas (see above).
           weight_early : float
               Weight of the early contribution in [0, 1].
       )pbdoc")
@@ -918,9 +931,21 @@ PYBIND11_MODULE(_libskit, m) {
            py::arg("element_ratio"),
            py::arg("early_temperature"), py::arg("early_electron_density"),
            py::arg("early_length"),
+           py::arg("delta_temperature"), py::arg("delta_electron_density"),
+           py::arg("delta_length"),
+           py::arg("weight_early") = 0.5)
+     .def_static("from_late_state", &libskit::LTETwoTime::from_late_state,
+           py::arg("element_ratio"),
+           py::arg("early_temperature"), py::arg("early_electron_density"),
+           py::arg("early_length"),
            py::arg("late_temperature"), py::arg("late_electron_density"),
            py::arg("late_length"),
-           py::arg("weight_early") = 0.5)
+           py::arg("weight_early") = 0.5,
+           R"pbdoc(
+               Construct an LTETwoTime model directly from early and late
+               plasma states, converting late_* into the internal delta_*
+               representation.
+           )pbdoc")
      .def("get_parameter", &libskit::LTETwoTime::get_parameter,
            py::return_value_policy::reference)
      .def("set_parameter", &libskit::LTETwoTime::set_parameter)
@@ -929,22 +954,26 @@ PYBIND11_MODULE(_libskit, m) {
      .def_readwrite("early_temperature", &libskit::LTETwoTime::early_temperature)
      .def_readwrite("early_electron_density", &libskit::LTETwoTime::early_electron_density)
      .def_readwrite("early_length", &libskit::LTETwoTime::early_length)
-     .def_readwrite("late_temperature", &libskit::LTETwoTime::late_temperature)
-     .def_readwrite("late_electron_density", &libskit::LTETwoTime::late_electron_density)
-     .def_readwrite("late_length", &libskit::LTETwoTime::late_length)
+     .def_readwrite("delta_temperature", &libskit::LTETwoTime::delta_temperature)
+     .def_readwrite("delta_electron_density", &libskit::LTETwoTime::delta_electron_density)
+     .def_readwrite("delta_length", &libskit::LTETwoTime::delta_length)
      .def_readwrite("weight_early", &libskit::LTETwoTime::weight_early)
+     .def_property_readonly("late_temperature", &libskit::LTETwoTime::late_temperature)
+     .def_property_readonly("late_electron_density", &libskit::LTETwoTime::late_electron_density)
+     .def_property_readonly("late_length", &libskit::LTETwoTime::late_length)
       .def("__repr__",
          [](const libskit::LTETwoTime &model) {
              std::stringstream ss;
              ss << "LTETwoTime(T: " << model.early_temperature
-                << "K → " << model.late_temperature
+                << "K → " << model.late_temperature()
                 << "K, ne: " << model.early_electron_density / 1e18
-                << "e18 → " << model.late_electron_density / 1e18
+                << "e18 → " << model.late_electron_density() / 1e18
                 << "e18 m⁻³, L: " << model.early_length
-                << "m → " << model.late_length
+                << "m → " << model.late_length()
                 << "m, w_early: " << model.weight_early << ")";
              return ss.str();
            });
+
 
   /*
    * Experiment class

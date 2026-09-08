@@ -647,8 +647,11 @@ struct LTETimeIntegratedTraits {
 };
 
 struct LTETwoTimeTraits {
+  // No leading temperature/electron_density/length dummy slots: unlike the
+  // other model traits, LTETwoTime's fittable params are early_*/delta_*/
+  // weight_early followed by the elements (matches get_parameter_names()).
   static int extra_offset(const EnzymeConstData &constant_data) {
-    return 3 + constant_data.n_elements + 7;
+    return 7 + constant_data.n_elements;
   }
   static void compute_irradiance(double *params, const EnzymeConstData *data,
                                  const double *wl, long n_wl,
@@ -656,17 +659,20 @@ struct LTETwoTimeTraits {
                                  const double *aki_overrides,
                                  const double *stark_overrides) {
     const int n_elements = data->n_elements;
-    const double *element_ratios = &params[3];
-    const int two_time_base = 3 + n_elements;
+    const double *element_ratios = &params[7];
 
-    const double early_temperature = params[two_time_base + 0];
-    const double early_electron_density = params[two_time_base + 1];
-    const double early_length = params[two_time_base + 2];
-    const double late_temperature = params[two_time_base + 3];
-    const double late_electron_density = params[two_time_base + 4];
-    const double late_length = params[two_time_base + 5];
-    const double early_weight = params[two_time_base + 6];
+    const double early_temperature = params[0];
+    const double early_electron_density = params[1];
+    const double early_length = params[2];
+    const double delta_temperature = params[3];
+    const double delta_electron_density = params[4];
+    const double delta_length = params[5];
+    const double early_weight = params[6];
     const double late_weight = 1.0 - early_weight;
+
+    const double late_temperature = early_temperature - delta_temperature;
+    const double late_electron_density = early_electron_density - delta_electron_density;
+    const double late_length = early_length + delta_length;
 
     std::vector<double> early_irradiance;
     std::vector<double> late_irradiance;
@@ -1469,7 +1475,7 @@ build_const_data(const Experiment &experiment) {
     base_params = 3 + constant_data.n_elements + 10; // 10 time params
     break;
   case MODEL_LTE_TWO_TIME:
-    base_params = 3 + constant_data.n_elements + 7; // 6 plasma + 1 weight
+    base_params = 7 + constant_data.n_elements; // 6 plasma + 1 weight
     break;
   }
   int extra = 0;
@@ -1539,18 +1545,15 @@ build_param_names(const Experiment &experiment,
     break;
 
   case MODEL_LTE_TWO_TIME:
-    names.push_back("temperature");
-    names.push_back("electron_density");
-    names.push_back("length");
-    for (const auto &el : element_names)
-      names.push_back(el);
     names.push_back("early_temperature");
     names.push_back("early_electron_density");
     names.push_back("early_length");
-    names.push_back("late_temperature");
-    names.push_back("late_electron_density");
-    names.push_back("late_length");
+    names.push_back("delta_temperature");
+    names.push_back("delta_electron_density");
+    names.push_back("delta_length");
     names.push_back("weight_early");
+    for (const auto &el : element_names)
+      names.push_back(el);
     break;
   }
 
@@ -1638,18 +1641,15 @@ fill_params(const Experiment &experiment,
   case MODEL_LTE_TWO_TIME: {
     const auto *tt = dynamic_cast<const LTETwoTime *>(
         experiment.plasma_model_ptr.get());
-    params[idx++] = static_cast<double>(tt->temperature);
-    params[idx++] = static_cast<double>(tt->electron_density);
-    params[idx++] = static_cast<double>(tt->length);
-    for (int e = 0; e < data.n_elements; e++)
-      params[idx++] = static_cast<double>(tt->element_ratio.at(element_names[e]));
     params[idx++] = static_cast<double>(tt->early_temperature);
     params[idx++] = static_cast<double>(tt->early_electron_density);
     params[idx++] = static_cast<double>(tt->early_length);
-    params[idx++] = static_cast<double>(tt->late_temperature);
-    params[idx++] = static_cast<double>(tt->late_electron_density);
-    params[idx++] = static_cast<double>(tt->late_length);
+    params[idx++] = static_cast<double>(tt->delta_temperature);
+    params[idx++] = static_cast<double>(tt->delta_electron_density);
+    params[idx++] = static_cast<double>(tt->delta_length);
     params[idx++] = static_cast<double>(tt->weight_early);
+    for (int e = 0; e < data.n_elements; e++)
+      params[idx++] = static_cast<double>(tt->element_ratio.at(element_names[e]));
     break;
   }
   }

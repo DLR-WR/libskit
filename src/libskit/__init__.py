@@ -147,11 +147,45 @@ class LTETimeIntegrated(_LTETimeIntegrated_cpp):
 
 
 class LTETwoTime(_LTETwoTime_cpp):
-    """Two-time surrogate of a time-integrated LTE plasma; see :class:`LTEModel` for ``db`` usage."""
+    """Two-time surrogate of a time-integrated LTE plasma; see :class:`LTEModel` for ``db`` usage.
+
+    Constructed from the *early* plasma state plus non-negative
+    ``delta_*`` parameters (``late = early -/+ delta``); those are the
+    parameters the optimizer fits. Use :meth:`from_late_state` to construct
+    directly from absolute early/late states instead.
+    """
 
     def __init__(self, *args, db: "Database | None" = None, **kwargs):
         _activate(db)
         super().__init__(*args, **kwargs)
+
+    @classmethod
+    def from_late_state(
+        cls,
+        element_ratio,
+        early_temperature: float,
+        early_electron_density: float,
+        early_length: float,
+        late_temperature: float,
+        late_electron_density: float,
+        late_length: float,
+        weight_early: float = 0.5,
+        *,
+        db: "Database | None" = None,
+    ) -> "LTETwoTime":
+        """Construct an :class:`LTETwoTime` from absolute early/late states.
+
+        Converts ``late_*`` into the internal ``delta_*`` representation.
+        """
+        return cls(
+            element_ratio,
+            early_temperature, early_electron_density, early_length,
+            early_temperature - late_temperature,
+            early_electron_density - late_electron_density,
+            late_length - early_length,
+            weight_early,
+            db=db,
+        )
 
 
 class Experiment(_Experiment_cpp):

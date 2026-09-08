@@ -44,9 +44,20 @@ from ._parametrization import (
 
 # ---------------------------------------------------------------------------
 # Default bound heuristics – keyed by substring of the parameter name.
-# Order matters: first match wins.
+# Order matters: first match wins, so "delta_*" entries (non-negative
+# early-to-late differences) must precede the generic "temperature" /
+# "electron_density" / "length" entries they would otherwise also match.
 # ---------------------------------------------------------------------------
+#
+# The lower bounds are a small positive floor rather than exactly 0.0:
+# LOG_SOFTMAX parametrization (the default) takes log(lower_physical), so an
+# exact 0.0 bound would raise (log-physics params must be strictly positive).
+# The floor is negligible compared to typical parameter magnitudes and still
+# effectively enforces delta >= 0.
 _DEFAULT_BOUNDS: list[tuple[str, float, float]] = [
+    ("delta_temperature", 1.0, 45_000.0),
+    ("delta_electron_density", 1e18, 1e24),
+    ("delta_length", 1e-9, 1e-2),
     ("temperature", 5_000.0, 50_000.0),
     ("electron_density", 1e22, 1e24),
     ("length", 1e-5, 1e-2),

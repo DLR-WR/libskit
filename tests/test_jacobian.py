@@ -105,7 +105,7 @@ def _make_experiment(
             integration_points=5,
         )
     elif model_type == "lte_two_time":
-        true_model = libskit.LTETwoTime(
+        true_model = libskit.LTETwoTime.from_late_state(
             {"Fe": 1.0},
             early_temperature=true_temperature,
             early_electron_density=5e23,
@@ -115,7 +115,7 @@ def _make_experiment(
             late_length=0.3e-3,
             weight_early=0.6,
         )
-        init_model = libskit.LTETwoTime(
+        init_model = libskit.LTETwoTime.from_late_state(
             {"Fe": 1.0},
             early_temperature=init_temperature,
             early_electron_density=4e23,
