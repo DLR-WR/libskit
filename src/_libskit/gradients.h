@@ -26,7 +26,13 @@ enum LossType {
   IntensityWeightedLoss,      ///< Custom LIBS loss
   L1Loss,         ///< L1 loss — robust to outliers
   LogL2Loss,      ///< L2 on log(1 + spectrum)
-  WeightedL2Loss  ///< Per-pixel weighted L2
+  WeightedL2Loss, ///< Per-pixel weighted L2
+  HuberLoss,      ///< Robust loss: quadratic near zero, linear beyond
+                  ///< `Experiment.robust_threshold` (delta)
+  TukeyBiweightLoss ///< Redescending robust loss: saturates to a constant
+                    ///< beyond `Experiment.robust_threshold` (c), giving
+                    ///< exactly-zero gradient contribution for residuals
+                    ///< that large (full outlier rejection)
 };
 
 /**
@@ -68,6 +74,12 @@ struct Experiment {
   /// Empty ⇒ uniform weights.
   Eigen::VectorXd loss_weights;
 
+  /// @brief Robust-loss threshold: the Huber "delta" or Tukey biweight "c"
+  /// constant, in the same (normalized) units as the residuals computed
+  /// inside the configured NormalizationType. Only used when loss_type is
+  /// HuberLoss or TukeyBiweightLoss.
+  double robust_threshold = 1.0;
+
   /**
    * @brief Construct an Experiment object.
    */
@@ -79,7 +91,8 @@ struct Experiment {
         instrument_ptr(_instrument.clone()),
         true_spectrum(std::move(_true_spectrum)),
         scale_factor(1.0),
-        loss_weights() {}
+        loss_weights(),
+        robust_threshold(1.0) {}
 
   /** @brief Get a mutable reference to the plasma model. */
   PlasmaModel &get_plasma_model() { return *plasma_model_ptr; }
@@ -99,6 +112,15 @@ double intensity_weighted_loss(const Eigen::VectorXd &true_irradiance,
 double weighted_l2loss(const Eigen::VectorXd &true_irradiance,
                        const Eigen::VectorXd &guess_irradiance,
                        const Eigen::VectorXd &weights);
+
+/** @brief Calculate Huber loss: quadratic for |r| <= delta, linear beyond. */
+double huber_loss(const Eigen::VectorXd &true_irradiance,
+                  const Eigen::VectorXd &guess_irradiance, double delta);
+
+/** @brief Calculate Tukey's biweight (redescending) loss: saturates to a
+ * constant for |r| > c, giving exactly-zero gradient contribution there. */
+double tukey_biweight_loss(const Eigen::VectorXd &true_irradiance,
+                          const Eigen::VectorXd &guess_irradiance, double c);
 
 /**
  * @brief Compute the analytically optimal scale factor between two spectra.

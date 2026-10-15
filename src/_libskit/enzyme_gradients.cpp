@@ -97,6 +97,10 @@ struct EnzymeConstData : physics::PlasmaData {
   // Per-pixel weights for WeightedL2Loss. Empty ⇒ uniform weights.
   std::vector<double> loss_weights;
 
+  // Robust-loss threshold (Huber delta / Tukey biweight c). Only used when
+  // loss_type is HuberLoss or TukeyBiweightLoss.
+  double robust_threshold = 1.0;
+
   // Pre-computed instrument kernel FFT (GENERIC, SLOPING)
   std::vector<std::complex<double>> kernel_fft;
   long N_fft;
@@ -414,7 +418,8 @@ static double normalize_and_loss(
     const double *y_exp,
     int normalization_type, int loss_type,
     double scale_factor_param,
-    const double *loss_weights, long n_loss_weights) {
+    const double *loss_weights, long n_loss_weights,
+    double robust_threshold) {
 
   double y_exp_max = 0.0;
   for (long i = 0; i < n_out; i++)
@@ -507,6 +512,35 @@ static double normalize_and_loss(
       for (long i = 0; i < n_out; i++) {
         const double difference = vec1[i] - vec2[i];
         loss += difference * difference;
+      }
+    }
+    break;
+  }
+  case HuberLoss: {
+    const double delta = robust_threshold;
+    for (long i = 0; i < n_out; i++) {
+      const double difference = vec1[i] - vec2[i];
+      const double abs_diff = difference < 0.0 ? -difference : difference;
+      if (abs_diff <= delta) {
+        loss += 0.5 * difference * difference;
+      } else {
+        loss += delta * (abs_diff - 0.5 * delta);
+      }
+    }
+    break;
+  }
+  case TukeyBiweightLoss: {
+    const double c = robust_threshold;
+    const double c2_over_6 = c * c / 6.0;
+    for (long i = 0; i < n_out; i++) {
+      const double difference = vec1[i] - vec2[i];
+      const double abs_diff = difference < 0.0 ? -difference : difference;
+      if (abs_diff >= c) {
+        loss += c2_over_6;
+      } else {
+        const double u = difference / c;
+        const double one_minus_u2 = 1.0 - u * u;
+        loss += c2_over_6 * (1.0 - one_minus_u2 * one_minus_u2 * one_minus_u2);
       }
     }
     break;
@@ -823,7 +857,7 @@ loss_impl(double *params, const double *aki, const double *stark,
       y_sim.data(), data->n_out, data->reference_irradiance.data(),
       data->normalization_type, data->loss_type, scale_factor_param,
       data->loss_weights.empty() ? nullptr : data->loss_weights.data(),
-      static_cast<long>(data->loss_weights.size()));
+      static_cast<long>(data->loss_weights.size()), data->robust_threshold);
 }
 
 // =====================================================================
@@ -1297,6 +1331,7 @@ build_const_data(const Experiment &experiment) {
   constant_data.loss_type = static_cast<int>(experiment.loss_type);
   constant_data.normalization_type = static_cast<int>(experiment.normalization_type);
   constant_data.has_scale_factor = (experiment.normalization_type == OptimizedScaleNorm);
+  constant_data.robust_threshold = experiment.robust_threshold;
 
   // ── Model-specific data ────────────────────────────────────────────
   constant_data.n_layers = 0;

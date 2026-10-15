@@ -310,12 +310,27 @@ PYBIND11_MODULE(_libskit, m) {
               ``loss_weights`` attribute (length must equal the
               spectrum length). Useful for downweighting spectral
               regions with high transition-probability uncertainty.
+          HuberLoss
+              Robust loss, quadratic for |residual| <= threshold and
+              linear beyond it. The threshold is set on the Experiment
+              via the ``robust_threshold`` attribute. Dampens (but does
+              not eliminate) the influence of persistently mismatched
+              lines, e.g. from self-absorption or missing database
+              entries.
+          TukeyBiweightLoss
+              Redescending robust loss: saturates to a constant for
+              |residual| >= threshold, giving exactly zero gradient
+              contribution from points beyond it (full outlier
+              rejection, not just dampening). The threshold is set on
+              the Experiment via the ``robust_threshold`` attribute.
       )pbdoc")
       .value("L2Loss", libskit::LossType::L2Loss)
       .value("IntensityWeightedLoss", libskit::LossType::IntensityWeightedLoss)
       .value("L1Loss", libskit::LossType::L1Loss)
       .value("LogL2Loss", libskit::LossType::LogL2Loss)
       .value("WeightedL2Loss", libskit::LossType::WeightedL2Loss)
+      .value("HuberLoss", libskit::LossType::HuberLoss)
+      .value("TukeyBiweightLoss", libskit::LossType::TukeyBiweightLoss)
       .export_values();
 
   /*
@@ -1069,6 +1084,10 @@ PYBIND11_MODULE(_libskit, m) {
           },
           "Per-pixel weights for WeightedL2Loss (length = spectrum length, "
           "or empty for uniform weights).")
+      .def_readwrite("robust_threshold", &libskit::Experiment::robust_threshold,
+          "Robust-loss threshold: the Huber 'delta' or Tukey biweight 'c' "
+          "constant (same units as the normalized residuals). Only used "
+          "when loss_type is HuberLoss or TukeyBiweightLoss.")
       .def("get_plasma_model", &libskit::Experiment::get_plasma_model,
            py::return_value_policy::reference_internal)
       .def("get_instrument", &libskit::Experiment::get_instrument,

@@ -69,6 +69,32 @@ double weighted_l2loss(const Eigen::VectorXd &true_irradiance,
   return result / (wsum + 1e-30);
 }
 
+double huber_loss(const Eigen::VectorXd &true_irradiance,
+                  const Eigen::VectorXd &guess_irradiance, double delta) {
+  return pointwise_loss_sum(
+      true_irradiance, guess_irradiance, [delta](double t, double g) {
+        const double r = t - g;
+        const double abs_r = std::abs(r);
+        if (abs_r <= delta)
+          return 0.5 * r * r;
+        return delta * (abs_r - 0.5 * delta);
+      });
+}
+
+double tukey_biweight_loss(const Eigen::VectorXd &true_irradiance,
+                          const Eigen::VectorXd &guess_irradiance, double c) {
+  const double c2_over_6 = c * c / 6.0;
+  return pointwise_loss_sum(
+      true_irradiance, guess_irradiance, [c, c2_over_6](double t, double g) {
+        const double r = t - g;
+        if (std::abs(r) >= c)
+          return c2_over_6;
+        const double u = r / c;
+        const double one_minus_u2 = 1.0 - u * u;
+        return c2_over_6 * (1.0 - one_minus_u2 * one_minus_u2 * one_minus_u2);
+      });
+}
+
 double optimal_scale_factor(const Eigen::VectorXd &y_sim,
                             const Eigen::VectorXd &y_ref) {
   // Analytic minimiser of the L2 loss ‖y_sim/c − y_ref‖² wrt c, i.e. the
@@ -129,6 +155,10 @@ double loss_func(const Experiment &experiment) {
     return log_l2loss(vec1, vec2);
   case WeightedL2Loss:
     return weighted_l2loss(vec1, vec2, experiment.loss_weights);
+  case HuberLoss:
+    return huber_loss(vec1, vec2, experiment.robust_threshold);
+  case TukeyBiweightLoss:
+    return tukey_biweight_loss(vec1, vec2, experiment.robust_threshold);
   default:
     return l2loss(vec1, vec2);
   }
