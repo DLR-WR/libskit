@@ -233,20 +233,23 @@ T get_stark_broadening_fwhm(const EmissionLine &line, T electron_density,
 /**
  * @brief Calculate the Stark shift of the emission line.
  * @param line The emission line information.
- * @param stark_fwhm The full width at half maximum of the Stark broadening in
- * nanometers.
+ * @param electron_density The electron density in m^-3.
  * @param temperature The temperature in Kelvin.
  * @return The Stark shift in nanometers.
- * @note This uses the formulas given in the Stark-b database.
+ * @note This uses the formulas given in the Stark-b database. Width and
+ * shift are both tabulated at a reference electron density (line.n_e_ref)
+ * and both scale ~linearly with electron_density/n_e_ref -- the same
+ * scaling factor used in get_stark_broadening_fwhm.
  */
 template <typename T>
-T get_stark_shift(const EmissionLine &line, T temperature) {
+T get_stark_shift(const EmissionLine &line, T electron_density, T temperature) {
   const auto logT = log10(temperature);
   const auto w = exp((line.a0 + line.a1 * logT +
                       line.a2 * logT * logT) * std::numbers::ln10);
   const auto stark_shift_nm = w *
                  (line.b0 + line.b1 * logT +
-                  line.b2 * logT * logT) /
+                  line.b2 * logT * logT) *
+                 electron_density / line.n_e_ref * 1e-6 /
                  10.0; // stark_shift_nm is given in angstroem, divide by 10 to get nanometer
   return stark_shift_nm;
 }
