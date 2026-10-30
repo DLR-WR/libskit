@@ -97,6 +97,10 @@ struct EnzymeConstData : physics::PlasmaData {
   // Per-pixel weights for WeightedL2Loss. Empty ⇒ uniform weights.
   std::vector<double> loss_weights;
 
+  // Robust-loss threshold (Huber delta / Tukey biweight c). Only used when
+  // loss_type is HuberLoss or TukeyBiweightLoss.
+  double robust_threshold = 1.0;
+
   // Pre-computed instrument kernel FFT (GENERIC, SLOPING)
   std::vector<std::complex<double>> kernel_fft;
   long N_fft;
@@ -414,7 +418,8 @@ static double normalize_and_loss(
     const double *y_exp,
     int normalization_type, int loss_type,
     double scale_factor_param,
-    const double *loss_weights, long n_loss_weights) {
+    const double *loss_weights, long n_loss_weights,
+    double robust_threshold) {
 
   double y_exp_max = 0.0;
   for (long i = 0; i < n_out; i++)
@@ -507,6 +512,35 @@ static double normalize_and_loss(
       for (long i = 0; i < n_out; i++) {
         const double difference = vec1[i] - vec2[i];
         loss += difference * difference;
+      }
+    }
+    break;
+  }
+  case HuberLoss: {
+    const double delta = robust_threshold;
+    for (long i = 0; i < n_out; i++) {
+      const double difference = vec1[i] - vec2[i];
+      const double abs_diff = difference < 0.0 ? -difference : difference;
+      if (abs_diff <= delta) {
+        loss += 0.5 * difference * difference;
+      } else {
+        loss += delta * (abs_diff - 0.5 * delta);
+      }
+    }
+    break;
+  }
+  case TukeyBiweightLoss: {
+    const double c = robust_threshold;
+    const double c2_over_6 = c * c / 6.0;
+    for (long i = 0; i < n_out; i++) {
+      const double difference = vec1[i] - vec2[i];
+      const double abs_diff = difference < 0.0 ? -difference : difference;
+      if (abs_diff >= c) {
+        loss += c2_over_6;
+      } else {
+        const double u = difference / c;
+        const double one_minus_u2 = 1.0 - u * u;
+        loss += c2_over_6 * (1.0 - one_minus_u2 * one_minus_u2 * one_minus_u2);
       }
     }
     break;
@@ -647,8 +681,11 @@ struct LTETimeIntegratedTraits {
 };
 
 struct LTETwoTimeTraits {
+  // No leading temperature/electron_density/length dummy slots: unlike the
+  // other model traits, LTETwoTime's fittable params are early_*/delta_*/
+  // weight_early followed by the elements (matches get_parameter_names()).
   static int extra_offset(const EnzymeConstData &constant_data) {
-    return 3 + constant_data.n_elements + 7;
+    return 7 + constant_data.n_elements;
   }
   static void compute_irradiance(double *params, const EnzymeConstData *data,
                                  const double *wl, long n_wl,
@@ -656,17 +693,20 @@ struct LTETwoTimeTraits {
                                  const double *aki_overrides,
                                  const double *stark_overrides) {
     const int n_elements = data->n_elements;
-    const double *element_ratios = &params[3];
-    const int two_time_base = 3 + n_elements;
+    const double *element_ratios = &params[7];
 
-    const double early_temperature = params[two_time_base + 0];
-    const double early_electron_density = params[two_time_base + 1];
-    const double early_length = params[two_time_base + 2];
-    const double late_temperature = params[two_time_base + 3];
-    const double late_electron_density = params[two_time_base + 4];
-    const double late_length = params[two_time_base + 5];
-    const double early_weight = params[two_time_base + 6];
+    const double early_temperature = params[0];
+    const double early_electron_density = params[1];
+    const double early_length = params[2];
+    const double delta_temperature = params[3];
+    const double delta_electron_density = params[4];
+    const double delta_length = params[5];
+    const double early_weight = params[6];
     const double late_weight = 1.0 - early_weight;
+
+    const double late_temperature = early_temperature - delta_temperature;
+    const double late_electron_density = early_electron_density - delta_electron_density;
+    const double late_length = early_length + delta_length;
 
     std::vector<double> early_irradiance;
     std::vector<double> late_irradiance;
@@ -817,7 +857,7 @@ loss_impl(double *params, const double *aki, const double *stark,
       y_sim.data(), data->n_out, data->reference_irradiance.data(),
       data->normalization_type, data->loss_type, scale_factor_param,
       data->loss_weights.empty() ? nullptr : data->loss_weights.data(),
-      static_cast<long>(data->loss_weights.size()));
+      static_cast<long>(data->loss_weights.size()), data->robust_threshold);
 }
 
 // =====================================================================
@@ -1291,6 +1331,7 @@ build_const_data(const Experiment &experiment) {
   constant_data.loss_type = static_cast<int>(experiment.loss_type);
   constant_data.normalization_type = static_cast<int>(experiment.normalization_type);
   constant_data.has_scale_factor = (experiment.normalization_type == OptimizedScaleNorm);
+  constant_data.robust_threshold = experiment.robust_threshold;
 
   // ── Model-specific data ────────────────────────────────────────────
   constant_data.n_layers = 0;
@@ -1469,7 +1510,7 @@ build_const_data(const Experiment &experiment) {
     base_params = 3 + constant_data.n_elements + 10; // 10 time params
     break;
   case MODEL_LTE_TWO_TIME:
-    base_params = 3 + constant_data.n_elements + 7; // 6 plasma + 1 weight
+    base_params = 7 + constant_data.n_elements; // 6 plasma + 1 weight
     break;
   }
   int extra = 0;
@@ -1539,18 +1580,15 @@ build_param_names(const Experiment &experiment,
     break;
 
   case MODEL_LTE_TWO_TIME:
-    names.push_back("temperature");
-    names.push_back("electron_density");
-    names.push_back("length");
-    for (const auto &el : element_names)
-      names.push_back(el);
     names.push_back("early_temperature");
     names.push_back("early_electron_density");
     names.push_back("early_length");
-    names.push_back("late_temperature");
-    names.push_back("late_electron_density");
-    names.push_back("late_length");
+    names.push_back("delta_temperature");
+    names.push_back("delta_electron_density");
+    names.push_back("delta_length");
     names.push_back("weight_early");
+    for (const auto &el : element_names)
+      names.push_back(el);
     break;
   }
 
@@ -1638,18 +1676,15 @@ fill_params(const Experiment &experiment,
   case MODEL_LTE_TWO_TIME: {
     const auto *tt = dynamic_cast<const LTETwoTime *>(
         experiment.plasma_model_ptr.get());
-    params[idx++] = static_cast<double>(tt->temperature);
-    params[idx++] = static_cast<double>(tt->electron_density);
-    params[idx++] = static_cast<double>(tt->length);
-    for (int e = 0; e < data.n_elements; e++)
-      params[idx++] = static_cast<double>(tt->element_ratio.at(element_names[e]));
     params[idx++] = static_cast<double>(tt->early_temperature);
     params[idx++] = static_cast<double>(tt->early_electron_density);
     params[idx++] = static_cast<double>(tt->early_length);
-    params[idx++] = static_cast<double>(tt->late_temperature);
-    params[idx++] = static_cast<double>(tt->late_electron_density);
-    params[idx++] = static_cast<double>(tt->late_length);
+    params[idx++] = static_cast<double>(tt->delta_temperature);
+    params[idx++] = static_cast<double>(tt->delta_electron_density);
+    params[idx++] = static_cast<double>(tt->delta_length);
     params[idx++] = static_cast<double>(tt->weight_early);
+    for (int e = 0; e < data.n_elements; e++)
+      params[idx++] = static_cast<double>(tt->element_ratio.at(element_names[e]));
     break;
   }
   }

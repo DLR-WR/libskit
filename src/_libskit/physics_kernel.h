@@ -247,13 +247,19 @@ inline double stark_fwhm(const EmissionLine &line, double ne, double T) {
   return w * ne / line.n_e_ref * 1e-6;
 }
 
-inline double stark_shift(const EmissionLine &line, double T) {
+inline double stark_shift(const EmissionLine &line, double ne, double T) {
+  // Stark-B tabulates both width and shift at a reference electron density
+  // (line.n_e_ref); both scale ~linearly with ne/n_e_ref to extrapolate to
+  // the actual plasma conditions. Apply the same scaling factor as
+  // stark_fwhm, so the shift doesn't stay pinned to its reference-density
+  // value regardless of the fitted electron density.
   const double logT = std::log10(T);
   double w = std::exp((line.a0 + line.a1 * logT + line.a2 * logT * logT) *
                       std::numbers::ln10);
   return w *
          (line.b0 + line.b1 * logT +
-          line.b2 * logT * logT) /
+          line.b2 * logT * logT) *
+         ne / line.n_e_ref * 1e-6 /
          10.0;
 }
 
@@ -448,7 +454,7 @@ inline void compute_emission_coeff(double temperature, double electron_density,
       if (peak_irradiance < accuracy * max_irradiance_peak)
         continue;
 
-      const double stark_shift_value = stark_shift(line, temperature);
+      const double stark_shift_value = stark_shift(line, electron_density, temperature);
       const double line_center = line.wavelength + stark_shift_value;
 
       auto it = std::upper_bound(wl, wl + n_wl, line.wavelength);
