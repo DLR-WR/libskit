@@ -36,6 +36,7 @@ import warnings
 from typing import Any
 
 import numpy as np
+from molmass import ELEMENTS
 
 from . import _libskit as _ext
 
@@ -51,6 +52,20 @@ __all__ = [
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _max_ionization_stage(element: str) -> int:
+    """Number of ionization stages with emission lines in ``aki_active``.
+
+    Mirrors ``get_maximum_ionization_level`` in ``functions.h`` (``min(atomic_number
+    - 1, 5)``) together with ``build_const_data``'s ``for (il = 0; il <
+    max_ions[e]; il++)`` loop in ``enzyme_gradients.cpp``: the C++ side builds line
+    data for ionization stages ``0 .. max_ions[e] - 1`` only (the top stage,
+    ``max_ions[e]``, is the Saha-equilibrium "sink" and has no lines attached). This
+    must stay in sync with that C++ formula, since it determines the Aki
+    catalogue layout ``aki_covariance``/``stark_covariance`` compare against.
+    """
+    return min(ELEMENTS[element].number - 1, 5)
+
+
 def _enumerate_aki_lines(aki_values: dict[str, list[float]],
                         aki_accuracies: dict[str, list[float]],
                         elements: list[str]) -> list[tuple[str, int, float, float]]:
@@ -60,13 +75,14 @@ def _enumerate_aki_lines(aki_values: dict[str, list[float]],
     The iteration order matches the C++ side exactly:
     outer loop over ``elements`` in the order given (alphabetical, since
     ``LTEModel.element_ratio`` is a ``std::map``); inner loop over
-    ionisation roman numerals "I" .. "X"; innermost loop over lines in
-    that ion in catalogue order.
+    ionisation roman numerals "I" up to (not including) the element's
+    ``_max_ionization_stage`` (not a fixed "I".."X" -- see that function for why);
+    innermost loop over lines in that ion in catalogue order.
     """
     roman = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
     out: list[tuple[str, int, float, float]] = []
     for el in elements:
-        for il in range(len(roman)):
+        for il in range(_max_ionization_stage(el)):
             ion = f"{el} {roman[il]}"
             if ion not in aki_values:
                 continue
@@ -259,6 +275,53 @@ def _weights_vector(experiment: Any,
     return w
 
 
+# Beyond this condition number, double-precision inversion of H_s carries
+# essentially zero reliable digits (machine epsilon ~1e-16): the Gauss-Newton
+# Hessian is numerically singular, not merely "poorly conditioned" (which
+# ``cond_H > 1e10`` above already warns about). Naive ``np.linalg.inv`` past
+# this point does not raise -- it silently returns deceptively large-but-finite
+# garbage. Concretely observed with a real multi-element composition: several
+# simultaneously-varying, weak-signal element fractions combined with the
+# plasma length collapse into a near-null direction that the existing
+# normalisation-rank-1 projection does not fully remove (that projection
+# exactly cancels a uniform *rescaling of the simulated spectrum*; the
+# degenerate "shrink L, grow every element fraction" direction is only
+# *approximately* such a rescaling once per-element Stark widths and
+# overlapping weak lines are accounted for, leaving a residual near-null
+# direction that stays small with few elements but can become catastrophic
+# with many).
+_RIDGE_COND_THRESHOLD = 1e12
+# Ridge strength relative to the Hessian's own scale (trace/p), the standard
+# choice for Tikhonov-regularizing a near-singular Gauss-Newton Hessian.
+_RIDGE_RELATIVE_STRENGTH = 1e-8
+
+
+def _regularize_hessian(H_s: np.ndarray, cond_H: float, label: str) -> np.ndarray:
+    """Add a small Tikhonov/ridge term to ``H_s`` if it is numerically singular.
+
+    Returns ``H_s`` unchanged when ``cond_H <= _RIDGE_COND_THRESHOLD``. Past that
+    threshold, adds ``ridge = _RIDGE_RELATIVE_STRENGTH * trace(H_s) / p`` to the
+    diagonal before inversion, recovering finite, usable numbers in the
+    well-constrained parameter directions. Variance along the near-null
+    direction(s) is thereby only a *lower bound*, not a precise value -- callers
+    needing to know whether a specific result was regularized should check for
+    this warning rather than trust the absolute magnitude of large entries.
+    """
+    if cond_H <= _RIDGE_COND_THRESHOLD:
+        return H_s
+    ridge = _RIDGE_RELATIVE_STRENGTH * np.trace(H_s) / H_s.shape[0]
+    warnings.warn(
+        f"{label} is numerically singular (cond={cond_H:.2e} > "
+        f"{_RIDGE_COND_THRESHOLD:.0e}); adding a Tikhonov/ridge term "
+        f"({ridge:.2e}, relative to the Hessian's own trace/p scale) to its "
+        "diagonal before inverting. Variance along the near-null "
+        "direction(s) is a lower bound, not a precise value.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
+    return H_s + ridge * np.eye(H_s.shape[0])
+
+
 def _closure_expand(Sigma_red: np.ndarray,
                     elem_cols_in_full: list[int],
                     dependent_full_col: int,
@@ -423,6 +486,7 @@ def aki_covariance(
             RuntimeWarning,
             stacklevel=2,
         )
+    H_s = _regularize_hessian(H_s, cond_H, "Scaled Hessian H_s = J_s^T W J_s")
     H_s_inv = np.linalg.inv(H_s)
 
     # --- 5. Per-parameter VJPs into Aki space ------------------------
@@ -633,6 +697,7 @@ def stark_covariance(
             RuntimeWarning,
             stacklevel=2,
         )
+    H_s = _regularize_hessian(H_s, cond_H, "Scaled Hessian")
     H_s_inv = np.linalg.inv(H_s)
 
     # --- 4. Per-parameter VJPs into stark-multiplier space ---------
