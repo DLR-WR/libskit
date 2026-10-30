@@ -22,12 +22,30 @@ runs:
           clang llvm-dev libclang-dev lld \
           libeigen3-dev libgtest-dev pybind11-dev libnlopt-dev
 
+    # The cached env.sh hardcodes versioned compiler paths (e.g. clang++-18) and
+    # the plugin is ABI-bound to one LLVM major, so the key must change whenever
+    # the runner image or its default LLVM changes (e.g. ubuntu-latest 24.04 -> 26.04).
+    - name: Detect toolchain fingerprint
+      id: toolchain
+      shell: bash
+      run: |
+        if command -v llvm-config >/dev/null 2>&1; then
+          llvm_config=llvm-config
+        else
+          llvm_config="$(ls /usr/bin/llvm-config-* /usr/local/bin/llvm-config-* 2>/dev/null | sort -V | tail -n1)"
+        fi
+        llvm_major="$("$llvm_config" --version | cut -d. -f1)"
+        image="${ImageOS:-$(. /etc/os-release && echo "${ID}${VERSION_ID}")}"
+        echo "llvm-major=$llvm_major" >> "$GITHUB_OUTPUT"
+        echo "image=$image" >> "$GITHUB_OUTPUT"
+        echo "Toolchain fingerprint: image=$image llvm=$llvm_major"
+
     - name: Restore Enzyme toolchain cache
       id: enzyme-cache
       uses: actions/cache@v4
       with:
         path: ${{ inputs.enzyme-prefix }}
-        key: enzyme-${{ runner.os }}-${{ hashFiles('scripts/setup_enzyme_toolchain.sh') }}
+        key: enzyme-${{ runner.os }}-${{ steps.toolchain.outputs.image }}-llvm${{ steps.toolchain.outputs.llvm-major }}-${{ hashFiles('scripts/setup_enzyme_toolchain.sh') }}
 
     - name: Build Enzyme toolchain (cache miss)
       if: steps.enzyme-cache.outputs.cache-hit != 'true'
@@ -44,6 +62,12 @@ runs:
         # Source the env file emitted by setup_enzyme_toolchain.sh, then forward
         # the resulting variables to subsequent steps via $GITHUB_ENV.
         source "$ENZYME_PREFIX/env.sh"
+        for bin in "$CC" "$CXX" "$ENZYME_PLUGIN_PATH"; do
+          if [[ ! -e "$bin" ]]; then
+            echo "::error::Enzyme toolchain points to missing file '$bin' (stale cache?)" >&2
+            exit 1
+          fi
+        done
         echo "CC=$CC" >> "$GITHUB_ENV"
         echo "CXX=$CXX" >> "$GITHUB_ENV"
         echo "ENZYME_PLUGIN_PATH=$ENZYME_PLUGIN_PATH" >> "$GITHUB_ENV"
