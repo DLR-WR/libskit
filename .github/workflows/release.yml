@@ -52,6 +52,29 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Select supported CPython wheel builds
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          project = tomllib.loads(Path("pyproject.toml").read_text())
+          versions = project["tool"]["libskit"]["supported-python-versions"]
+          numbers = [tuple(map(int, version.split("."))) for version in versions]
+          expected_range = f">={versions[0]},<{numbers[-1][0]}.{numbers[-1][1] + 1}"
+          if project["project"]["requires-python"] != expected_range:
+              raise ValueError(
+                  f"requires-python must match supported versions: {expected_range}"
+              )
+          builds = " ".join(
+              f"cp{version.replace('.', '')}-*" for version in versions
+          )
+          with open(os.environ["GITHUB_ENV"], "a") as output:
+              output.write(f"CIBW_BUILD={builds}\n")
+          print(f"cibuildwheel build selector: {builds}")
+          PY
+
       # macOS: Enzyme needs a real LLVM (not Apple Clang) with matching
       # llvm-config. Homebrew ships one; we put it on PATH so the existing
       # scripts/setup_enzyme_toolchain.sh picks it up (it runs inside
@@ -72,7 +95,7 @@ jobs:
         # Windows wheels are not built: the official LLVM Windows binaries do
         # not ship the static Clang dev libs Enzyme needs. Windows users install
         # from sdist and provide their own LLVM+Enzyme toolchain.
-        uses: pypa/cibuildwheel@v2.21.3
+        uses: pypa/cibuildwheel@v4.3.5
         env:
           CIBW_ARCHS: ${{ matrix.cibw_archs }}
         with:
