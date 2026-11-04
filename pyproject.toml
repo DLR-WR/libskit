@@ -10,17 +10,15 @@ readme = "README.md"
 authors = [
   { name = "Christoph H. Egerland", email = "christoph.egerland@dlr.de" },
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.11,<3.15"
 classifiers = [
   "Development Status :: 4 - Beta",
   "License :: OSI Approved :: MIT License",
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
 
 # Runtime dependencies - these are installed when user runs: pip install libskit
@@ -33,6 +31,10 @@ dependencies = [
   "molmass>=2021.6.18",
   "nlopt>=2.7.0",
 ]
+
+# This list is the source of truth for CI builds and release wheel builds.
+[tool.libskit]
+supported-python-versions = ["3.11", "3.12", "3.13", "3.14"]
 
 [project.optional-dependencies]
 test = ["pytest"]
@@ -127,8 +129,6 @@ changelog_file = "CHANGELOG.md"
 # cibuildwheel configuration for cross-platform wheel building
 # =============================================================================
 [tool.cibuildwheel]
-# Build for Python 3.9+ (scipy 1.14+ requires Python 3.10+ for newer features)
-build = "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
 # Skip musllinux (Alpine) and PyPy builds
 skip = "*-musllinux_* pp*"
 
