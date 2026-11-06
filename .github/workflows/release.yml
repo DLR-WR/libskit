@@ -39,7 +39,7 @@ jobs:
           - os: ubuntu-latest
             arch: x86_64
             cibw_archs: x86_64
-          - os: macos-14
+          - os: macos-15
             arch: arm64
             cibw_archs: arm64
     steps:

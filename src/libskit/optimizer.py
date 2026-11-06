@@ -40,6 +40,7 @@ from ._parametrization import (
     LogSoftmaxALRParametrization,
     Parametrization,
     ParametrizationStrategy,
+    TwoTimeLogSoftmaxALRParametrization,
 )
 
 # ---------------------------------------------------------------------------
@@ -203,6 +204,9 @@ class Optimizer:
           solvers.
         * :attr:`Parametrization.LINEAR_RAW`: linear physics with
           ``1/x0`` scaling and raw element ratios.
+        * :attr:`Parametrization.LOG_SOFTMAX_ALR_TWO_TIME`: ALR/log
+          coordinates with coupled fractional temperature/density drops,
+          guaranteeing positive late states for ``LTETwoTime``.
 
         User-supplied ``bounds=`` are always interpreted in **physical**
         units regardless of the parametrization.
@@ -225,10 +229,12 @@ class Optimizer:
         self.normalize_elements = normalize_elements
 
         # Resolve the parametrization strategy from the enum value.
-        if parametrization is Parametrization.LOG_SOFTMAX:
+        if parametrization is Parametrization.LOG_SOFTMAX_ALR_TWO_TIME:
             self._param_strategy: ParametrizationStrategy = (
-                LogSoftmaxParametrization()
+                TwoTimeLogSoftmaxALRParametrization()
             )
+        elif parametrization is Parametrization.LOG_SOFTMAX:
+            self._param_strategy = LogSoftmaxParametrization()
         elif parametrization is Parametrization.LOG_SOFTMAX_ALR:
             self._param_strategy = LogSoftmaxALRParametrization()
         else:  # LINEAR_RAW

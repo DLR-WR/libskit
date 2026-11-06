@@ -24,6 +24,9 @@ Two strategies ship with libskit, selected via the
   scaling, raw element ratios renormalised to sum to one before each
   loss evaluation.  Kept as a less-preferred fallback for users who
   need to reproduce earlier results.
+* :attr:`Parametrization.LOG_SOFTMAX_ALR_TWO_TIME`: ALR/log coordinates
+  with coupled fractional temperature and density drops for ``LTETwoTime``.
+  Late-state floors are 1000 K and 1e18 m^-3; delta bounds remain physical.
 
 User-facing bounds (the ``bounds=`` kwarg of :class:`Optimizer`) are
 always supplied in physical units.  The strategy converts them to its
@@ -49,6 +52,7 @@ class Parametrization(Enum):
 
     LOG_SOFTMAX = "log_softmax"
     LOG_SOFTMAX_ALR = "log_softmax_alr"
+    LOG_SOFTMAX_ALR_TWO_TIME = "log_softmax_alr_two_time"
     LINEAR_RAW = "linear_raw"
 
 
@@ -537,4 +541,87 @@ class LogSoftmaxALRParametrization(LogSoftmaxParametrization):
             # Zero the gradient along the pinned logit so numerical
             # noise cannot drive the pinned coordinate off its bound.
             g[self._alr_ref_idx] = 0.0
+        return g
+
+
+class TwoTimeLogSoftmaxALRParametrization(LogSoftmaxALRParametrization):
+    """ALR coordinates with coupled positive late temperature and density.
+
+    For each early/delta pair, optimize a linear fraction ``f`` in [0, 1]:
+    ``delta = lower_delta + f * (cap - lower_delta)``, where
+    ``cap = min(upper_delta, early - late_floor)``. Late-state floors are
+    1000 K and 1e18 m^-3, keeping LTE evaluation away from the zero-temperature
+    singularity. User delta bounds remain physical bounds. Other parameters
+    retain the ALR/log transforms.
+    """
+
+    name = "log_softmax_alr_two_time"
+    _late_floors = {"temperature": 1000.0, "electron_density": 1e18}
+
+    def _post_bind(self) -> None:
+        self._pairs: list[tuple[int, int, float]] = []
+        for quantity, floor in self._late_floors.items():
+            early_name = f"early_{quantity}"
+            delta_name = f"delta_{quantity}"
+            if early_name not in self.param_names or delta_name not in self.param_names:
+                raise ValueError(f"{self.name} requires {early_name} and {delta_name}")
+            early = self.param_names.index(early_name)
+            delta = self.param_names.index(delta_name)
+            values = np.array([
+                self.initial_physical[early], self.initial_physical[delta],
+                self.lower_physical[early], self.upper_physical[early],
+                self.lower_physical[delta], self.upper_physical[delta],
+            ])
+            if not np.isfinite(values).all():
+                raise ValueError(f"{quantity} initial values and bounds must be finite")
+            lo = self.lower_physical[delta]
+            cap = min(self.upper_physical[delta],
+                      self.lower_physical[early] - floor)
+            if lo <= 0 or cap <= lo:
+                raise ValueError(
+                    f"{delta_name} requires 0 < lower_delta < "
+                    "min(upper_delta, lower_early - late_floor)"
+                )
+            cap0 = min(self.upper_physical[delta],
+                       self.initial_physical[early] - floor)
+            if not (
+                self.lower_physical[early] <= self.initial_physical[early]
+                <= self.upper_physical[early]
+                and lo <= self.initial_physical[delta] <= cap0
+            ):
+                raise ValueError(f"Initial {early_name}/{delta_name} is outside coupled bounds")
+            self._pairs.append((early, delta, floor))
+
+        super()._post_bind()
+        for early, delta, floor in self._pairs:
+            cap = min(self.upper_physical[delta],
+                      self.initial_physical[early] - floor)
+            self._initial_internal[delta] = (
+                (self.initial_physical[delta] - self.lower_physical[delta])
+                / (cap - self.lower_physical[delta])
+            )
+            self._lower_internal[delta] = 0.0
+            self._upper_internal[delta] = 1.0
+
+    def physical_from_internal(self, x_int: np.ndarray) -> np.ndarray:
+        x = super().physical_from_internal(x_int)
+        for early, delta, floor in self._pairs:
+            cap = min(self.upper_physical[delta], x[early] - floor)
+            lo = self.lower_physical[delta]
+            x[delta] = lo + float(x_int[delta]) * (cap - lo)
+        return x
+
+    def chain_rule(
+        self, g_phys_dict: Dict[str, float], x_phys: np.ndarray
+    ) -> np.ndarray:
+        g = super().chain_rule(g_phys_dict, x_phys)
+        for early, delta, floor in self._pairs:
+            early_cap = float(x_phys[early]) - floor
+            cap = min(self.upper_physical[delta], early_cap)
+            width = cap - self.lower_physical[delta]
+            g_delta = float(g_phys_dict.get(self.param_names[delta], 0.0))
+            if early_cap < self.upper_physical[delta]:
+                fraction = (x_phys[delta] - self.lower_physical[delta]) / width
+                g[early] += g_delta * fraction * x_phys[early]
+            g[delta] = g_delta * width
         return g
