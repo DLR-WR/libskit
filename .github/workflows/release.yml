@@ -75,15 +75,14 @@ jobs:
           print(f"cibuildwheel build selector: {builds}")
           PY
 
-      # macOS: Enzyme needs a real LLVM (not Apple Clang) with matching
-      # llvm-config. Homebrew ships one; we put it on PATH so the existing
-      # scripts/setup_enzyme_toolchain.sh picks it up (it runs inside
-      # cibuildwheel's before-all on the host, not in a container).
+      # macOS: Enzyme v0.0.256 is tested with LLVM 15/16; pin LLVM 16 instead
+      # of Homebrew's latest LLVM, which may have incompatible API changes.
+      # Put its llvm-config and clang on PATH for setup_enzyme_toolchain.sh.
       - name: Install Homebrew LLVM (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install llvm ninja
-          LLVM_PREFIX=$(brew --prefix llvm)
+          brew install llvm@16 ninja
+          LLVM_PREFIX=$(brew --prefix llvm@16)
           echo "$LLVM_PREFIX/bin" >> "$GITHUB_PATH"
           echo "LDFLAGS=-L$LLVM_PREFIX/lib" >> "$GITHUB_ENV"
           echo "CPPFLAGS=-I$LLVM_PREFIX/include" >> "$GITHUB_ENV"
