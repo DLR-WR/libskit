@@ -13,6 +13,7 @@ from ._parametrization import (
     LinearRawParametrization,
     LogSoftmaxParametrization,
     LogSoftmaxALRParametrization,
+    TwoTimeLogSoftmaxALRParametrization,
 )
 from ._libskit import (  # blackbody_irradiance,; calculate_gradients, calculate_spectrum,; calculate_spectrum_aryelle, calculate_spectrum_fft,; loss
     Instrument, GenericSpectrometer, SlopingSpectrometer, Aryelle, ChemCam, calculate_irradiance_test,

@@ -163,7 +163,7 @@ archs = []
 
 [tool.cibuildwheel.macos]
 # Per-arch native builds are driven from release.yml (macos-13 = x86_64,
-# macos-14 = arm64), so we do not list archs here.
+# macos-15 = arm64), so we do not list archs here.
 # Homebrew LLVM (installed by the CI workflow) provides clang + llvm-config;
 # setup_enzyme_toolchain.sh then builds ClangEnzyme against it.
 before-all = "bash {project}/scripts/setup_enzyme_toolchain.sh"
