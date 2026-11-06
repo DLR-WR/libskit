@@ -63,18 +63,15 @@ if(NOT EXISTS "${ENZYME_PLUGIN_PATH}")
     message(FATAL_ERROR "ENZYME_PLUGIN_PATH does not exist: ${ENZYME_PLUGIN_PATH}")
 endif()
 
-set(ENZYME_PLUGIN_COMPILE_FLAGS
-    "-fpass-plugin=${ENZYME_PLUGIN_PATH} -Xclang -load -Xclang ${ENZYME_PLUGIN_PATH} -O2 -mllvm -enzyme-globals-default-inactive=1"
-)
-set(ENZYME_PLUGIN_COMPILE_OPTIONS
-    "SHELL:-fpass-plugin=${ENZYME_PLUGIN_PATH}"
-    -Xclang
-    -load
-    -Xclang
-    "${ENZYME_PLUGIN_PATH}"
-    -O2
-    "SHELL:-mllvm -enzyme-globals-default-inactive=1"
-)
+if(APPLE)
+    set(ENZYME_PLUGIN_COMPILE_FLAGS
+        "-fpass-plugin=${ENZYME_PLUGIN_PATH} -O2 -mllvm -enzyme-globals-default-inactive=1"
+    )
+else()
+    set(ENZYME_PLUGIN_COMPILE_FLAGS
+        "-fplugin=${ENZYME_PLUGIN_PATH} -O2 -mllvm -enzyme-globals-default-inactive=1"
+    )
+endif()
 message(STATUS "Enzyme plugin: ${ENZYME_PLUGIN_PATH}")
 
 ##############################
