@@ -39,9 +39,11 @@ jobs:
           - os: ubuntu-latest
             arch: x86_64
             cibw_archs: x86_64
-          - os: macos-15
-            arch: arm64
-            cibw_archs: arm64
+          # Temporarily disabled: Enzyme plugin options are not recognized by
+          # Clang on the macOS runner. Re-enable once the toolchain is fixed.
+          # - os: macos-15
+          #   arch: arm64
+          #   cibw_archs: arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -75,22 +77,20 @@ jobs:
           print(f"cibuildwheel build selector: {builds}")
           PY
 
-      # macOS: Enzyme v0.0.256 is tested with LLVM 15/16; pin LLVM 16 instead
-      # of Homebrew's latest LLVM, which may have incompatible API changes.
-      # Put its llvm-config and clang on PATH for setup_enzyme_toolchain.sh.
-      - name: Install Homebrew LLVM (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install llvm@16 ninja
-          LLVM_PREFIX=$(brew --prefix llvm@16)
-          echo "$LLVM_PREFIX/bin" >> "$GITHUB_PATH"
-          echo "LDFLAGS=-L$LLVM_PREFIX/lib" >> "$GITHUB_ENV"
-          echo "CPPFLAGS=-I$LLVM_PREFIX/include" >> "$GITHUB_ENV"
+      # Temporarily disabled with the macOS wheel matrix entry above.
+      # - name: Install Homebrew LLVM (macOS)
+      #   if: runner.os == 'macOS'
+      #   run: |
+      #     brew install llvm@16 ninja
+      #     LLVM_PREFIX=$(brew --prefix llvm@16)
+      #     echo "$LLVM_PREFIX/bin" >> "$GITHUB_PATH"
+      #     echo "LDFLAGS=-L$LLVM_PREFIX/lib" >> "$GITHUB_ENV"
+      #     echo "CPPFLAGS=-I$LLVM_PREFIX/include" >> "$GITHUB_ENV"
 
       - name: Build wheels (cibuildwheel)
         # Enzyme setup:
         #   * Linux: inside the manylinux container via [tool.cibuildwheel.linux].before-all
-        #   * macOS: on the host via [tool.cibuildwheel.macos].before-all
+        # macOS release wheels are temporarily disabled in the matrix above.
         # Windows wheels are not built: the official LLVM Windows binaries do
         # not ship the static Clang dev libs Enzyme needs. Windows users install
         # from sdist and provide their own LLVM+Enzyme toolchain.
