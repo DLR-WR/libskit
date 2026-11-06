@@ -64,10 +64,14 @@ if(NOT EXISTS "${ENZYME_PLUGIN_PATH}")
 endif()
 
 set(ENZYME_PLUGIN_COMPILE_FLAGS
-    "-fplugin=${ENZYME_PLUGIN_PATH} -O2 -mllvm -enzyme-globals-default-inactive=1"
+    "-fpass-plugin=${ENZYME_PLUGIN_PATH} -Xclang -load -Xclang ${ENZYME_PLUGIN_PATH} -O2 -mllvm -enzyme-globals-default-inactive=1"
 )
 set(ENZYME_PLUGIN_COMPILE_OPTIONS
-    "SHELL:-fplugin=${ENZYME_PLUGIN_PATH}"
+    "SHELL:-fpass-plugin=${ENZYME_PLUGIN_PATH}"
+    -Xclang
+    -load
+    -Xclang
+    "${ENZYME_PLUGIN_PATH}"
     -O2
     "SHELL:-mllvm -enzyme-globals-default-inactive=1"
 )
